@@ -1,0 +1,1743 @@
+---
+title: "Statistics internship - Centre Léon Bérard - Differences between women with no history of breast cancer, women with localized breast cancer undergoing treatment, women with localized breast cancer whose treatment has ended, and women with metastatic cancer"
+date: "`r Sys.Date()`"
+header-includes:
+  - \usepackage{dsfont}
+  - \usepackage{bbm}
+output:
+  rmdformats::readthedown:
+    self_contained: true
+    thumbnails: false
+    lightbox: false
+    fig_caption: yes
+    fig_number: yes
+    use_bookdown: true
+    toc_depth: 4
+---
+
+```{r setup, include=FALSE, echo=F}
+knitr::opts_chunk$set(echo = TRUE, results = "asis", message = FALSE, warning = FALSE)
+```
+
+```{r librairies, echo=FALSE, results="hide", message = FALSE, warning = FALSE}
+library("dplyr")
+library("ggplot2")
+library("table1")
+library("kableExtra")
+library("patchwork")
+library("cowplot")
+library("likert")
+library("reshape")
+library("sf")
+library("cartography")
+library("tidyverse")
+library("tm")
+library("wordcloud")
+```
+
+# Data Management
+
+```{r importation-base, echo=F, message=F, warning=F}
+data <- read.csv2("exportQSeintinelles_réponsescomplètes.csv", sep = ",", dec = ",")
+data <- data[, -c(1:10)]
+```
+
+```{r supp-colonnes, echo=FALSE, results="hide", message = FALSE, warning = FALSE}
+data <- mutate(data, imc = weight / ((height / 100)^2), age = 2021 - year_birth)
+data <- data[, -c(304:380, 303)]
+data <- data[, -c(61, 86, 156, 251, 277, 52)]
+data <- data[, -c(15, 16, 1, 50)]
+data <- data[, -c(
+  2, 4, 6, 8, 11, 13, 17, 19, 21, 23, 25, 27, 47, 52, 55, 95, 96, 111, 113, 115,
+  117, 119, 121, 123, 125, 127, 148, 180, 212, 242, 267, 292)]
+```
+
+```{r supp-enfants, echo=FALSE, results="hide", message = FALSE, warning = FALSE}
+data[434, 9] <- 2
+```
+
+```{r tranche-age, echo=F, message=F, warning=F, results="hide"}
+data$age_cut_4 <- ifelse(((data$age >= 18) & (data$age < 30)), "1",
+  ifelse(((data$age >= 30) & (data$age < 50)), "2",
+    ifelse(((data$age >= 50) & (data$age < 65)), "3",
+      ifelse(data$age >= 65, "4", "0"))))
+```
+
+```{r imc-category, echo=F, message=F, warning=F, results="hide"}
+data$imc_category <- ifelse(data$imc<18.5,1,
+                     ifelse(data$imc>= 18.5 & (data$imc<25),2,
+                            ifelse(data$imc>=25 & (data$imc<30),3,
+                                   ifelse(data$imc>=30,4,0))))
+```
+
+```{r godin-code, echo=F, message=F, warning=F, results="hide"}
+data$godin_low_godinnum <- as.numeric(data$godin_low_godinnum)
+data$godin_moderate_godinnum <- as.numeric(data$godin_moderate_godinnum)
+data$godin_vigorous_godinnum <- as.numeric(data$godin_vigorous_godinnum)
+data$activity <- ifelse(((data$godin_low_godinnum*3) + (data$godin_moderate_godinnum*5) +
+  (data$godin_vigorous_godinnum*9)) >=24, "1", "0")
+```
+
+```{r nb-comor, echo=F}
+data[, 24:34] <- lapply(data[, 24:34], as.character)
+data[, 24:34] <- lapply(data[, 24:34], as.numeric)
+data$comor_nb <- rowSums(data[, 24:34])
+```
+
+```{r code-house-situation-bis, echo=F, message=F, warning=F}
+data$residence_location <- as.factor(data$residence_location)
+data$residence_location_bis <- ifelse((data$residence_location == "1"), 1,
+                                      ifelse((data$residence_location == "2"), 1, 
+                                             ifelse((data$residence_location == "3"), 2,
+                                                    ifelse(data$residence_location == '4', 2, 
+                                                           ifelse(data$residence_location == '5', 3, 
+                                                                  ifelse(data$residence_location == '6', 3, 
+                                                                         ifelse(data$residence_location == '7', 4, 
+                                                                                ifelse(data$residence_location == '8', 4, 0))))))))
+```
+
+```{r code-education, echo=F, message=F, warning=F}
+data$education <- as.factor(data$education)
+data$education_bis <- ifelse((data$education == "1"), 1,
+                                      ifelse((data$education == "2"), 1, 
+                                             ifelse((data$education == "3"), 2,
+                                                    ifelse(data$education == '4', 2, 
+                                                           ifelse(data$education == '5', 3, 
+                                                                  ifelse(data$education == '6', 3,0))))))
+```
+
+```{r bc-status-bis, echo=F}
+data$bc_status_bis <- ifelse(data$bc_status == "1", "1", 
+                             ifelse((data$bc_status == "2") & (data$stage1 =="1") &
+                                      (data$breast_chemo == "2" |
+                                         data$breast_hormono == "2"|
+                                         data$breast_immuno == "2" |
+                                         data$breast_radio == "2" |
+                                         data$breast_surgery == "2" |
+                                         data$breast_target == "2"),"2", 
+                                    ifelse((data$bc_status == "2") & (data$stage1 == "1") &
+                                             (((data$breast_immuno == "1" |
+                                                    data$breast_immuno == "3" |
+                                                    data$breast_immuno == "4") &
+                                                   (data$breast_hormono == "1" |
+                                                      data$breast_hormono == "3" |
+                                                      data$breast_hormono == "4") &
+                                                   (data$breast_radio == "1"|
+                                                      data$breast_radio == "3"|
+                                                      data$breast_radio == "4" ) &
+                                                   (data$breast_chemo == "1" |
+                                                      data$breast_chemo == "3"|
+                                                      data$breast_chemo == "4") &
+                                                   (data$breast_surgery == "1"|
+                                                      data$breast_surgery == "3"|
+                                                      data$breast_surgery == "4") & 
+                                                   (data$breast_target == "1"|
+                                                      data$breast_target == "3"|
+                                                      data$breast_target == "4"))), "3",
+                                             ifelse(data$stage1 == "2", "4","0"))))
+```
+
+```{r missing-values, echo=F, message=F, warning=F, results="hide"}
+data[, 10:15][is.na(data[, 10:15])] <- 0 
+
+data[c(1:1030, 1032:nrow(data)), 17][is.na(data[c(1:1030, 1032:nrow(data)), 17])] <- 3 
+data[c(1:1030, 1032:nrow(data)), 18:23][is.na(data[c(1:1030, 1032:nrow(data)), 18:23])] <- 5 
+```
+
+```{r supp-femmes-abberantes, echo=F}
+#which(is.na(data$stage1),arr.ind=TRUE)
+#which(data$imc == max(data$imc), arr.ind = TRUE)
+data <- data[-c(240,1031),]
+```
+
+```{r barrier-faci-non-concerne, echo=F}
+for (i in 1:nrow(data)){
+  for (j in 213:235){
+  if (data[i,j] == 6) {data[i,j] <- 3}
+  }}
+
+for (i in 1:nrow(data)){
+  for (j in 237:259){
+  if (data[i,j] == 6) {data[i,j] <- 3}
+  }}
+```
+
+```{r region, echo=F}
+data <- mutate(data,
+                  region = case_when(
+                    residence_department=="01" ~ "1",
+                    residence_department=="03" ~ "1", 
+                    residence_department=="07" ~ "1",
+                    residence_department=="15" ~ "1",
+                    residence_department=="26" ~ "1", 
+                    residence_department=="38" ~ "1", 
+                    residence_department=="42" ~ "1", 
+                    residence_department=="43" ~ "1",
+                    residence_department=="63" ~ "1", 
+                    residence_department=="69" ~ "1",
+                    residence_department=="73" ~ "1", 
+                    residence_department=="74" ~ "1",
+                    residence_department=="21" ~ "2",
+                    residence_department=="25" ~ "2",
+                    residence_department=="39" ~ "2", 
+                    residence_department=="58" ~ "2",
+                    residence_department=="70" ~ "2", 
+                    residence_department=="71" ~ "2",
+                    residence_department=="89" ~ "2", 
+                    residence_department=="90" ~ "2",
+                    residence_department=="22" ~ "3", 
+                    residence_department=="29" ~ "3",
+                    residence_department=="35" ~ "3", 
+                    residence_department=="56" ~ "3",
+                    residence_department=="18" ~ "4",
+                    residence_department=="28" ~ "4",
+                    residence_department=="36" ~ "4",
+                    residence_department=="37" ~ "4",
+                    residence_department=="41" ~ "4",
+                    residence_department=="45" ~ "4",
+                    residence_department=="2B" ~ "5", 
+                    residence_department=="08" ~ "6",
+                    residence_department=="10" ~ "6",
+                    residence_department=="51" ~ "6",
+                    residence_department=="52" ~ "6",
+                    residence_department=="54" ~ "6",
+                    residence_department=="55" ~ "6",
+                    residence_department=="57" ~ "6",
+                    residence_department=="67" ~ "6",
+                    residence_department=="68" ~ "6",
+                    residence_department=="88" ~ "6",
+                    residence_department=="02" ~ "7",
+                    residence_department=="59" ~ "7",
+                    residence_department=="60" ~ "7",
+                    residence_department=="62" ~ "7",
+                    residence_department=="80" ~ "7",
+                    residence_department=="75" ~ "8",
+                    residence_department=="77" ~ "8",
+                    residence_department=="78" ~ "8", 
+                    residence_department=="91" ~ "8",
+                    residence_department=="92" ~ "8", 
+                    residence_department=="93" ~ "8",
+                    residence_department=="94" ~ "8", 
+                    residence_department=="95" ~ "8",
+                    residence_department=="14" ~ "9", 
+                    residence_department=="27" ~ "9",
+                    residence_department=="50" ~ "9", 
+                    residence_department=="61" ~ "9",
+                    residence_department=="76" ~ "9",
+                    residence_department=="16" ~ "10",
+                    residence_department=="17" ~ "10",
+                    residence_department=="23" ~ "10",
+                    residence_department=="24" ~ "10",
+                    residence_department=="33" ~ "10",
+                    residence_department=="40" ~ "10", 
+                    residence_department=="47" ~ "10",
+                    residence_department=="64" ~ "10",
+                    residence_department=="79" ~ "10",
+                    residence_department=="86" ~ "10",
+                    residence_department=="87" ~ "10",
+                    residence_department=="19" ~ "10",
+                    residence_department=="09" ~ "11",
+                    residence_department=="11" ~ "11",
+                    residence_department=="12" ~ "11",
+                    residence_department=="30" ~ "11",
+                    residence_department=="31" ~ "11",
+                    residence_department=="34" ~ "11",
+                    residence_department=="46" ~ "11",
+                    residence_department=="48" ~ "11",
+                    residence_department=="65" ~ "11",
+                    residence_department=="66" ~ "11",
+                    residence_department=="81" ~ "11", 
+                    residence_department=="82" ~ "11",
+                    residence_department=="32" ~ "11", 
+                    residence_department=="44" ~ "12",
+                    residence_department=="49" ~ "12", 
+                    residence_department=="53" ~ "12",
+                    residence_department=="72" ~ "12",
+                    residence_department=="85" ~ "12",
+                    residence_department=="04" ~ "13",
+                    residence_department=="05" ~ "13",
+                    residence_department=="06" ~ "13",
+                    residence_department=="13" ~ "13",
+                    residence_department=="83" ~ "13", 
+                    residence_department=="84" ~ "13",
+                    residence_department=="971" ~ "14",
+                    residence_department=="972" ~ "14",
+                    residence_department=="973" ~ "14",
+                    residence_department=="975" ~ "14",
+                    TRUE ~ "0"))                                                          
+```
+
+# Data descriptive table
+
+```{r rename-var, echo=F}
+data <- dplyr::rename(data, "godin_vigorous"=godin_vigorous_godinnum, 
+                               "godin_moderate"=godin_moderate_godinnum, 
+                               "godin_low"=godin_low_godinnum, 
+                               "techno_prog_tracker_no_use" = techno_p_tracker_no_use,
+                               "techno_prog_tracker_no_info" = techno_p_tracker_no_info,
+                               "techno_prog_tracker_no_price" = techno_p_tracker_no_price,
+                               "techno_prog_tracker_no_security" = techno_p_tracker_no_security,
+                               "techno_prog_tracker_no_dependancy" = techno_p_tracker_no_dependancy,
+                               "techno_prog_tracker_no_reliability" = techno_p_tracker_no_reliability,
+                               "techno_prog_tracker_no_wrist" = techno_p_tracker_no_wrist,
+                               "techno_prog_tracker_no_allergy" = techno_p_tracker_no_allergy,
+                               "techno_prog_tracker_no_opportunity" = techno_p_tracker_no_opportunity,
+                               "techno_prog_tracker_no_userfriendly" = techno_p_tracker_no_userfriendly,
+                               "techno_prog_tracker_no_tmtime" = techno_p_tracker_no_tmtime,
+                               "techno_prog_tracker_no_malfunction" = techno_p_tracker_no_malfunction,
+                               "techno_prog_tracker_no_alone" = techno_p_tracker_no_alone,
+                               "techno_prog_tracker_no_active" = techno_p_tracker_no_active,
+                               "techno_prog_tracker_no_interest" = techno_p_tracker_no_interest,
+                               "techno_prog_tracker_no_unable" = techno_p_tracker_no_unable,
+                               "techno_prog_tracker_no_other" = techno_p_tracker_no_other,
+                               "techno_prog_tracker_fun_step" = techno_p_tracker_fun_step,
+                               "techno_prog_tracker_fun_distance" = techno_p_tracker_fun_distance,
+                               "techno_prog_tracker_fun_calorie" = techno_p_tracker_fun_calorie,
+                               "techno_prog_tracker_fun_nbfloor" = techno_p_tracker_fun_nbfloor,
+                               "techno_prog_tracker_fun_level" = techno_p_tracker_fun_level,
+                               "techno_prog_tracker_fun_hr" = techno_p_tracker_fun_hr,
+                               "techno_prog_tracker_fun_sitting" = techno_p_tracker_fun_sitting,
+                               "techno_prog_tracker_fun_standing" = techno_p_tracker_fun_standing,
+                               "techno_prog_tracker_fun_intensity" = techno_p_tracker_fun_intensity,
+                               "techno_prog_tracker_fun_type" = techno_p_tracker_fun_type,
+                               "techno_prog_tracker_fun_sleep" = techno_p_tracker_fun_sleep,
+                               "techno_prog_tracker_fun_other" = techno_p_tracker_fun_other, 
+                               "techno_prog_tracker_sha"=techno_p_tracker_sha)
+```
+
+```{r factor-var, echo=FALSE, results="hide", message = FALSE, warning = FALSE}
+# creation du second tableau
+data2 <- data
+
+# renommer les categories
+data2$activity <- factor(data2$activity,
+                  levels=0:1, 
+                  labels=c("Inactive", "Active"))
+data2$imc_category <- factor(data2$imc_category, 
+                             levels = 1:4, 
+                             labels = c("Underweight", "Normal", "Overweight", "Obesity"))
+data2$bc_status <- factor(data2$bc_status, 
+                         levels=c(1, 2,0), 
+                         labels=c("No", "Yes", "P-value"))
+data2$bc_status_bis <- factor(data2$bc_status_bis, 
+                              levels=c(1,2,3,4), 
+                              labels=c("No BC", "Current localized BC", "Finished localized BC", 
+                                       "Metastatic BC"))
+data2$age_cut_4 <- factor(data2$age_cut_4,
+  levels = 1:4,
+  labels = c("18-30", "30-50", "50-65", "more than 65"))
+data2$pregnancy <- factor(data2$pregnancy,
+  levels = 0:1,
+  labels = c("No", "Yes"))
+data2$education <- factor(data2$education,
+  levels = 1:6,
+  labels = c("No diploma", "CAP-BEP", "BAC", "BAC+1-2", "BAC+3-4", "BAC+5-6"))
+data2$education_bis <- factor(data2$education_bis,
+  levels = 1:3,
+  labels = c("Low levels", "Medium levels", "High levels"))
+data2$marital_status <- factor(data2$marital_status,
+  levels = 1:5,
+  labels = c("Married-pacsee", "Common-law partner", "Divorced", "Widowed", "Single"))
+data2$current_work2 <- factor(data2$current_work2,
+  levels = 1:8,
+  labels = c(
+    "Employed full time", "Employed part time", "On sick leave", "Disabled", "Retired",
+    "Student", "Looking for work", "Not working"))
+data2$current_sociopro <- factor(data2$current_sociopro,
+  levels = 1:9,
+  labels = c(
+    "Farmer-operator", "Craft trader-managerial nusinessman",
+    "Executive-senior intellectual professional", "Intermediate Occupation|",
+    "Employed", "Worker", "Retired", "No activity", "Other"))
+data2$residence_location <- factor(data2$residence_location,
+  levels = 1:8,
+  labels = c(
+    "Big city - center", "Big city – rest part", "Suburbs of big cities ", "Town/Small city ", 
+    "Subdivision of towns/small cities",
+    "Village – center", "Subdivision of village", "Isolated/hamlet"))
+data2$residence_location_bis <- factor(data2$residence_location_bis,
+  levels = 1:4,
+  labels = c(
+    "Big city & its suburb", "Town/small city & its subdivision", "Village & its subdivision", "Isolated/hamlet"))
+data2$greenspace <- factor(data2$greenspace,
+  levels = 0:1,
+  labels = c("No", "Yes"))
+data2$stage1 <- factor(data2$stage1,
+  levels = 1:3, 
+  labels = c("Localized", "Metastatic", "No BC"))
+data2[, 18:23] <- lapply(data2[, 18:23], factor, 
+                         levels = 1:5,
+                         labels = c("Finished", "In progress", "No", "Don't know", "No BC"))
+data2[, c(7,8,24:33,42:63,67:92,121:151,
+          154:182,185:197,199:212,236,260)] <- lapply(data2[,c(7,8,24:33,42:63,67:92,121:151,
+                                                               154:182,185:197,199:212,236,260)], factor, 
+                                                      levels = 0:1,
+                                                      labels = c("No", "Yes"))
+data2$pref_info_pa <- factor(data2$pref_info_pa,
+  levels = 0:2,
+  labels = c("No", "Yes", "Maybe"))
+data2$pref_pa_interest <- factor(data2$pref_pa_interest,
+  levels = 0:2,
+  labels = c("No", "Yes", "Maybe"))
+data2$pref_pa_able <- factor(data2$pref_pa_able,
+  levels = 0:2,
+  labels = c("No", "Yes", "Maybe"))
+
+data2$pref_pa_sup <- factor(data2$pref_pa_sup,
+  levels = 1:7,
+  labels = c(
+    "Supervised face-to-face", "Supervised distance", "Unsupervised", 
+    "Supervised face-to-face then distance",
+    "Supervised face-to-face then unsupervised", "Supervised distance then unsupervised", 
+    "No preference"))
+data2$pref_pa_intensity <- factor(data2$pref_pa_intensity,
+  levels = 1:4,
+  labels = c("Low", "Moderate", "Vigorous", "No preference"))
+data2$pref_pa_orga <- factor(data2$pref_pa_orga,
+  levels = 1:3,
+  labels = c("Flexible", "Planned", "No preference"))
+data2$pref_pa_recur <- factor(data2$pref_pa_recur,
+  levels = 1:3,
+  labels = c("Same", "Differents", "No preference"))
+data2$pref_pa_comp <- factor(data2$pref_pa_comp,
+  levels = 1:4,
+  labels = c("Competition", "Leisure", "Both", "No preference"))
+data2$pref_pa_moment <- factor(data2$pref_pa_moment,
+  levels = 1:5,
+  labels = c("Morning", "Lunch", "Afternoon", "Evening", "No preference"))
+data2$pref_pa_week <- factor(data2$pref_pa_week,
+  levels = 1:4,
+  labels = c("Week-end", "Monday-Friday", "Week", "No preference"))
+data2$pref_pa_duration <- factor(data2$pref_pa_duration,
+  levels = 1:4,
+  labels = c("<15min", "15-30min", "30-60min", ">60min"))
+data2$techno_tracker_fq <- factor(data2$techno_tracker_fq,
+  levels = 1:6,
+  labels = c(
+    "Never", "<1day/sem", "1-2day/sem", "3-4day/sem",
+    "5-6day/sem", "All the day"))
+data2$techno_prog_tracker <- factor(data2$techno_prog_tracker,
+  levels = 0:2,
+  labels = c("No", "Yes", "Maybe"))
+data2$techno_prog_tracker_sha <- factor(data2$techno_prog_tracker_sha,
+  levels = 0:2,
+  labels = c("No", "Yes", "Maybe"))
+data2$techno_prog_app <- factor(data2$techno_prog_app,
+  levels = 0:2,
+  labels = c("No", "Yes", "Maybe"))
+data2$techno_prog_web <- factor(data2$techno_prog_web,
+  levels = 0:2,
+  labels = c("No", "Yes", "Maybe"))
+data2[, c(102:120,213:235,237:259,261,262)] <- lapply(data2[, c(102:120,213:235,237:259,261,262)], as.numeric)
+data2[, c(9:15,100)] <- lapply(data2[, c(9:15,100)], as.factor)
+data2$region <- factor(data2$region, 
+                       levels=1:14, 
+                       labels = c("ARA", "BFC", "Bre", "CVL", "Corse", "GE", "HDF", "IDF", "Norman", "NAqui", "Occi", 
+                                  "PDL", "PACA", "DOM"))
+```
+
+```{r label-var, echo=F, message=F, warning=F, results="hide"}
+Hmisc::label(data2$activity) <- "Physical activity : godin"
+Hmisc::label(data2$marital_status) <- "Marital status"
+Hmisc::label(data2$imc_category) <- "BMI classification"
+Hmisc::label(data2$education) <- "Education level"
+Hmisc::label(data2$education_bis) <- "Education level for no-French readers"
+Hmisc::label(data2$current_work2) <- "Occupational status"
+Hmisc::label(data2$current_sociopro) <- "Socio-professional category"
+Hmisc::label(data2$residence_department) <- "Residence department"
+Hmisc::label(data2$residence_location) <- "Residential location/area"
+Hmisc::label(data2$residence_location_bis) <- "Residential location/area"
+Hmisc::label(data2$greenspace) <- "Green space nearby"
+Hmisc::label(data2$pregnancy) <- "Pregnant"
+Hmisc::label(data2$nb_child_house) <- "Number of children at home"
+Hmisc::label(data2$nb_child_house_age_012) <- "Children: 0-12 months"
+Hmisc::label(data2$nb_child_house_age_14) <- "Children: 1-4 years"
+Hmisc::label(data2$nb_child_house_age_510) <- "Children: 5-10 years"
+Hmisc::label(data2$nb_child_house_age_1114) <- "Children: 11-14 years"
+Hmisc::label(data2$nb_child_house_age_1517) <- "Children: 15-17 years"
+Hmisc::label(data2$nb_child_house_age_18) <- "Children: 18 years and older"
+Hmisc::label(data2$stage1) <- "Stage of disease"
+Hmisc::label(data2$breast_surgery) <- "Surgery treatment"
+Hmisc::label(data2$breast_chemo) <- "Chemotherapy treatment"
+Hmisc::label(data2$breast_radio) <- "Radiotherapy treatment"
+Hmisc::label(data2$breast_hormono) <- "Hormonotherapy treatment"
+Hmisc::label(data2$breast_immuno) <- "Immunotherapy treatment"
+Hmisc::label(data2$breast_target) <- "Targeted therapy"
+Hmisc::label(data2$comor_heart) <- "Cardiovascular diseases"
+Hmisc::label(data2$comor_neuro) <- "Neurological diseases"
+Hmisc::label(data2$comor_endo) <- "Endocrine pathology"
+Hmisc::label(data2$comor_respi) <- "Respiratory diseases"
+Hmisc::label(data2$comor_infla) <- "Inflammatory diseases"
+Hmisc::label(data2$comor_immun) <- "Autoimmune diseases"
+Hmisc::label(data2$comor_muscle) <- "Musculoskeletal diseases"
+Hmisc::label(data2$comor_locomotion) <- "Musculoskeletal surgery"
+Hmisc::label(data2$comor_depression) <- "Psychiatric disorders"
+Hmisc::label(data2$comor_other_cancer) <- "Other cancer"
+Hmisc::label(data2$comor_other) <- "Other diseases"
+Hmisc::label(data2$comor_nb) <- "Number of comorbidities"
+Hmisc::label(data2$godin_vigorous) <- "High intensity AP (nb per week)"
+Hmisc::label(data2$godin_moderate) <- "Moderate intensity AP (nb per week)"
+Hmisc::label(data2$godin_low) <- "Low intensity AP (nb per week)"
+Hmisc::label(data2$strengthening) <- "Muscle strengthening"
+Hmisc::label(data2$covid_pa) <- "Covid influence on PA level"
+Hmisc::label(data2$pref_info_pa) <- "Information and advice on sports practice"
+Hmisc::label(data2$pref_info_pa_who_famdoc) <- "From whom: family doctor"
+Hmisc::label(data2$pref_info_pa_who_onco) <- "From whom: oncologist"
+Hmisc::label(data2$pref_info_pa_who_nurse) <- "From whom: nurse"
+Hmisc::label(data2$pref_info_pa_who_hospcoach) <- "From whom: PA specialist in a health care facility"
+Hmisc::label(data2$pref_info_pa_who_gymcoach) <- "From whom: gymcoach"
+Hmisc::label(data2$pref_info_pa_who_patient) <- "From whom: patient"
+Hmisc::label(data2$pref_info_pa_who_persocoach) <- "From whom: persocoach"
+Hmisc::label(data2$pref_info_pa_who_physio) <- "From whom: physiotherapist"
+Hmisc::label(data2$pref_info_pa_who_nopref) <- "From whom: no preference"
+Hmisc::label(data2$pref_info_pa_who_other) <- "From whom: other"
+Hmisc::label(data2$pref_info_pa_how_phone) <- "By what means : phone"
+Hmisc::label(data2$pref_info_pa_how_sms) <- "By what means : sms"
+Hmisc::label(data2$pref_info_pa_how_app) <- "By what means : mobile application"
+Hmisc::label(data2$pref_info_pa_how_mail) <- "By what means : mail"
+Hmisc::label(data2$pref_info_pa_how_web) <- "By what means : web"
+Hmisc::label(data2$pref_info_pa_how_dvd) <- "By what means : dvd"
+Hmisc::label(data2$pref_info_pa_how_video) <- "By what means : video"
+Hmisc::label(data2$pref_info_pa_how_leaflet) <- "By what means : leaflet"
+Hmisc::label(data2$pref_info_pa_how_online) <- "By what means : online"
+Hmisc::label(data2$pref_info_pa_how_podcast) <- "By what means : podcast"
+Hmisc::label(data2$pref_info_pa_how_facetoface) <- "By what means : face to face"
+Hmisc::label(data2$pref_info_pa_how_group) <- "By what means : group"
+Hmisc::label(data2$pref_info_pa_how_other) <- "By what means : other"
+Hmisc::label(data2$pref_pa_interest) <- "PA interest adapted to the capacities"
+Hmisc::label(data2$pref_pa_able) <- "PA practice adapted to abilities"
+Hmisc::label(data2$pref_pa_type_walking) <- "PA type: walking"
+Hmisc::label(data2$pref_pa_type_swimming) <- "PA type: swimming"
+Hmisc::label(data2$pref_pa_type_gym) <- "PA type: gym"
+Hmisc::label(data2$pref_pa_type_biking) <- "PA type: biking"
+Hmisc::label(data2$pref_pa_type_dance) <- "PA type: dance"
+Hmisc::label(data2$pref_pa_type_running) <- "PA type: running"
+Hmisc::label(data2$pref_pa_type_strengthening) <- "PA type: strengthening"
+Hmisc::label(data2$pref_pa_type_yoga) <- "PA type: yoga"
+Hmisc::label(data2$pref_pa_type_pilates) <- "PA type: pilates"
+Hmisc::label(data2$pref_pa_type_fitness) <- "PA type: fitness"
+Hmisc::label(data2$pref_pa_type_racket) <- "PA type: racket"
+Hmisc::label(data2$pref_pa_type_team) <- "PA type: team sports"
+Hmisc::label(data2$pref_pa_type_other) <- "PA type: other"
+Hmisc::label(data2$pref_pa_where_outside) <- "Where: outside"
+Hmisc::label(data2$pref_pa_where_home) <- "Where: home"
+Hmisc::label(data2$pref_pa_where_work) <- "Where: work"
+Hmisc::label(data2$pref_pa_where_club) <- "Where: club"
+Hmisc::label(data2$pref_pa_where_hospital) <- "Where: hospital"
+Hmisc::label(data2$pref_pa_where_nopref) <- "Where: no preference"
+Hmisc::label(data2$pref_pa_where_other) <- "Where: other"
+Hmisc::label(data2$pref_pa_how_alone) <- "How: alone"
+Hmisc::label(data2$pref_pa_how_peer) <- "How: in pairs - in groups"
+Hmisc::label(data2$pref_pa_how_patient) <- "How: with patient"
+Hmisc::label(data2$pref_pa_how_group) <- "How: group of non-patients"
+Hmisc::label(data2$pref_pa_how_nopref) <- "How: no preference"
+Hmisc::label(data2$pref_pa_how_other) <- "How: other"
+Hmisc::label(data2$pref_pa_sup) <- "Supervision for sport practice"
+Hmisc::label(data2$pref_pa_intensity) <- "Intensity of sport practice"
+Hmisc::label(data2$pref_pa_orga) <- "Organization for sport practice"
+Hmisc::label(data2$pref_pa_recur) <- "Type of activity for sports practice"
+Hmisc::label(data2$pref_pa_comp) <- "Type of activity for sports practice"
+Hmisc::label(data2$pref_pa_moment) <- "Time of day for sports practice"
+Hmisc::label(data2$pref_pa_week) <- "Time of the week for sports practice"
+Hmisc::label(data2$pref_pa_nbday) <- "Maximum number of days for sports practice"
+Hmisc::label(data2$pref_pa_duration) <- "Time in minutes per session"
+Hmisc::label(data2$pref_pa_strategy_gp_online) <- "Group courses via live internet with a professional"
+Hmisc::label(data2$pref_pa_strategy_indiv_online) <- "Individual lessons via live internet with a professional"
+Hmisc::label(data2$pref_pa_strategy_online) <- "Courses put on the internet by a professional"
+Hmisc::label(data2$pref_pa_strategy_competition) <- "Gaming type competition"
+Hmisc::label(data2$pref_pa_strategy_phone) <- "Telephone calls by a professional"
+Hmisc::label(data2$pref_pa_strategy_sms) <- "SMS of encouragement"
+Hmisc::label(data2$pref_pa_strategy_mail) <- "Encouraging e-mails"
+Hmisc::label(data2$pref_pa_strategy_leaflet) <- "PA recommendations and benefits brochure"
+Hmisc::label(data2$pref_pa_strategy_video) <- "Video testimonials"
+Hmisc::label(data2$pref_pa_strategy_socialnet) <- "Motivation via social networks"
+Hmisc::label(data2$pref_pa_strategy_tracker) <- "Use of connected watch-pedometer"
+Hmisc::label(data2$pref_pa_strategy_app) <- "Application to note the exercises performed"
+Hmisc::label(data2$pref_pa_strategy_notebook) <- "Notebook to record the exercises carried out"
+Hmisc::label(data2$pref_pa_strategy_web) <- "Web page to note the exercises performed"
+Hmisc::label(data2$pref_pa_strategy_share_entourage) <- "Share information with those around you"
+Hmisc::label(data2$pref_pa_strategy_share_doctor) <- "Share information with your doctor"
+Hmisc::label(data2$pref_pa_strategy_doc) <- "Online document with exercises"
+Hmisc::label(data2$pref_pa_strategy_usb) <- "USB flash drive with exercises to do independently"
+Hmisc::label(data2$pref_pa_strategy_dvd) <- "DVD with exercises to do autonomously"
+Hmisc::label(data2$covid_pref_pa) <- "Covid impact on PA preferences"
+Hmisc::label(data2$techno_socialnetwork_fb) <- "Use of facebook"
+Hmisc::label(data2$techno_socialnetwork_instagram) <- "Use of instagram"
+Hmisc::label(data2$techno_socialnetwork_linkedin) <- "Use of linkedin"
+Hmisc::label(data2$techno_socialnetwork_twitter) <- "Use of twitter"
+Hmisc::label(data2$techno_socialnetwork_no) <- "No social network"
+Hmisc::label(data2$techno_socialnetwork_other) <- "Use of other social network"
+Hmisc::label(data2$techno_app_fizzup) <- "Use of fizzup app"
+Hmisc::label(data2$techno_app_nike) <- "Use of nike app "
+Hmisc::label(data2$techno_app_adidas) <- "Use of adidas app"
+Hmisc::label(data2$techno_app_strava) <- "Use of strava app"
+Hmisc::label(data2$techno_app_fitbit) <- "Use of fitbit app"
+Hmisc::label(data2$techno_app_garmin) <- "Use of garmin app"
+Hmisc::label(data2$techno_app_jawbone) <- "Use of jawbone app"
+Hmisc::label(data2$techno_app_withings) <- "Use of withings app"
+Hmisc::label(data2$techno_app_xiaomi) <- "Use of xiaomi app"
+Hmisc::label(data2$techno_app_healthapp) <- "Use of healthapp"
+Hmisc::label(data2$techno_app_runtastic) <- "Use of runtastic app"
+Hmisc::label(data2$techno_app_no) <- "No app used"
+Hmisc::label(data2$techno_app_other) <- "Use of other app"
+Hmisc::label(data2$techno_tracker_smartphone_podo) <- "Use of smartphone pedometer PA tracker"
+Hmisc::label(data2$techno_tracker_podo) <- "Use of classic pedometer PA tracker"
+Hmisc::label(data2$techno_tracker_fitbit) <- "Use of fitbit PA tracker"
+Hmisc::label(data2$techno_tracker_jawbone) <- "Use of jawbone PA tracker"
+Hmisc::label(data2$techno_tracker_apple) <- "Use of apple PA tracker"
+Hmisc::label(data2$techno_tracker_galaxy) <- "Use of galaxy PA tracker"
+Hmisc::label(data2$techno_tracker_garmin) <- "Use of garmin PA tracker"
+Hmisc::label(data2$techno_tracker_xiaomi) <- "Use of xiaomi PA tracker"
+Hmisc::label(data2$techno_tracker_withings) <- "Use of withings PA tracker"
+Hmisc::label(data2$techno_tracker_no) <- "No PA tracker uwed"
+Hmisc::label(data2$techno_tracker_other) <- "Use of other PA tracker"
+Hmisc::label(data2$techno_tracker_fq) <- "Frequency of wearing the activity tracker"
+Hmisc::label(data2$techno_prog_tracker) <- "Participation in a remote program via a tracker"
+Hmisc::label(data2$techno_prog_tracker_no_use) <- "Why no interest: fear of use"
+Hmisc::label(data2$techno_prog_tracker_no_info) <- "Why no interest: little info"
+Hmisc::label(data2$techno_prog_tracker_no_price) <- "Why no interest: too expensive"
+Hmisc::label(data2$techno_prog_tracker_no_security) <- "Why no interest: misuse of data"
+Hmisc::label(data2$techno_prog_tracker_no_dependancy) <- "Why no interest: dependancy"
+Hmisc::label(data2$techno_prog_tracker_no_reliability) <- "Why no interest: no reliability"
+Hmisc::label(data2$techno_prog_tracker_no_wrist) <- "Why no interest: no wrist wear"
+Hmisc::label(data2$techno_prog_tracker_no_allergy) <- "Why no interest: wrist allergy"
+Hmisc::label(data2$techno_prog_tracker_no_opportunity) <- "Why no interest: no opportunity"
+Hmisc::label(data2$techno_prog_tracker_no_userfriendly) <- "Why no interest: no userfriendly"
+Hmisc::label(data2$techno_prog_tracker_no_tmtime) <- "Why no interest: no time"
+Hmisc::label(data2$techno_prog_tracker_no_malfunction) <- "Why no interest: malfunction"
+Hmisc::label(data2$techno_prog_tracker_no_alone) <- "Why no interest: no program alone"
+Hmisc::label(data2$techno_prog_tracker_no_active) <- "Why no interest: too much active"
+Hmisc::label(data2$techno_prog_tracker_no_interest) <- "Why no interest: no interest to practise more"
+Hmisc::label(data2$techno_prog_tracker_no_unable) <- "Why no interest: physically unable"
+Hmisc::label(data2$techno_prog_tracker_no_other) <- "Why no interest: other"
+Hmisc::label(data2$techno_prog_tracker_fun_step) <- "Tracker info: step"
+Hmisc::label(data2$techno_prog_tracker_fun_distance) <- "Tracker info: distance"
+Hmisc::label(data2$techno_prog_tracker_fun_calorie) <- "Tracker info: calorie"
+Hmisc::label(data2$techno_prog_tracker_fun_nbfloor) <- "Tracker info: number of floors"
+Hmisc::label(data2$techno_prog_tracker_fun_level) <- "Tracker info: PA level"
+Hmisc::label(data2$techno_prog_tracker_fun_hr) <- "Tracker info: heart rate"
+Hmisc::label(data2$techno_prog_tracker_fun_sitting) <- "Tracker info: time spent sitting"
+Hmisc::label(data2$techno_prog_tracker_fun_standing) <- "Tracker info: time spent standing"
+Hmisc::label(data2$techno_prog_tracker_fun_intensity) <- "Tracker info: intensity"
+Hmisc::label(data2$techno_prog_tracker_fun_type) <- "Tracker info: time spent in activities"
+Hmisc::label(data2$techno_prog_tracker_fun_sleep) <- "Tracker info: time spent sleep"
+Hmisc::label(data2$techno_prog_tracker_fun_other) <- "Tracker info: other"
+Hmisc::label(data2$techno_prog_tracker_sha) <- "Sharing data with caregivers"
+Hmisc::label(data2$techno_prog_app) <- "Participation in a remote program via an application"
+Hmisc::label(data2$techno_prog_app_no_use) <- "Why no interest: fear of use"
+Hmisc::label(data2$techno_prog_app_no_info) <- "Why no interest: little info"
+Hmisc::label(data2$techno_prog_app_no_security) <- "Why no interest: misuse of data"
+Hmisc::label(data2$techno_prog_app_no_dependency) <- "Why no interest: dependency"
+Hmisc::label(data2$techno_prog_app_no_opportunity) <- "Why no interest: no opportunity"
+Hmisc::label(data2$techno_prog_app_no_userfriendly) <- "Why no interest: no userfriendly"
+Hmisc::label(data2$techno_prog_app_no_tmtime) <- "Why no interest: no time"
+Hmisc::label(data2$techno_prog_app_no_malfunction) <- "Why no interest: malfunction"
+Hmisc::label(data2$techno_prog_app_no_alone) <- "Why no interest: no program alone"
+Hmisc::label(data2$techno_prog_app_no_active) <- "Why no interest: too much active"
+Hmisc::label(data2$techno_prog_app_no_interest) <- "Why no interest: no interest to practise more"
+Hmisc::label(data2$techno_prog_app_no_unable) <- "Why no interest: physically unable"
+Hmisc::label(data2$techno_prog_app_no_other) <- "Why no interest: other"
+Hmisc::label(data2$techno_prog_web) <- "Participation in a remote program via a website"
+Hmisc::label(data2$techno_prog_web_no_use) <- "Why no interest: fear of use"
+Hmisc::label(data2$techno_prog_web_no_info) <- "Why no interest: little info"
+Hmisc::label(data2$techno_prog_web_no_security) <- "Why no interest: misuse of data"
+Hmisc::label(data2$techno_prog_web_no_dependency) <- "Why no interest: dependency"
+Hmisc::label(data2$techno_prog_web_no_opportunity) <- "Why no interest: no opportunity"
+Hmisc::label(data2$techno_prog_web_no_userfriendly) <- "Why no interest: no userfriendly"
+Hmisc::label(data2$techno_prog_web_no_tmtime) <- "Why no interest: no time"
+Hmisc::label(data2$techno_prog_web_no_malfunction) <- "Why no interest: malfunction"
+Hmisc::label(data2$techno_prog_web_no_alone) <- "Why no interest: no program alone"
+Hmisc::label(data2$techno_prog_web_no_active) <- "Why no interest: too much active"
+Hmisc::label(data2$techno_prog_web_no_interest) <- "Why no interest: no interest to practise more"
+Hmisc::label(data2$techno_prog_web_no_unable) <- "Why no interest: physically unable"
+Hmisc::label(data2$techno_prog_web_no_other) <- "Why no interest: other"
+Hmisc::label(data2$covid_techno) <- "Covid impact on the use of technologies related to PA?"
+Hmisc::label(data2$barrier_pa_fatigue) <- "Barrier: Too tired"
+Hmisc::label(data2$barrier_pa_weather) <- "Barrier: Bad weather to practice"
+Hmisc::label(data2$barrier_pa_pain) <- "Barrier: Severe pain"
+Hmisc::label(data2$barrier_pa_partner) <- "Barrier: No partner to practice"
+Hmisc::label(data2$barrier_pa_schedule) <- "Barrier: Schedule"
+Hmisc::label(data2$barrier_pa_pleasure) <- "Barrier: No pleasure to practice"
+Hmisc::label(data2$barrier_pa_structure) <- "Barrier: No structure around"
+Hmisc::label(data2$barrier_pa_look) <- "Barrier: Fear of view of others"
+Hmisc::label(data2$barrier_pa_interest) <- "Barrier: No interest"
+Hmisc::label(data2$barrier_pa_family) <- "Barrier: Family commitments"
+Hmisc::label(data2$barrier_pa_ignorance) <- "Barrier: Ignorance of practice"
+Hmisc::label(data2$barrier_pa_price) <- "Barrier: Too expensive"
+Hmisc::label(data2$barrier_pa_injury) <- "Barrier: Fear of injury"
+Hmisc::label(data2$barrier_pa_social) <- "Barrier: Prefer to see friends"
+Hmisc::label(data2$barrier_pa_motivation) <- "Barrier: No motivation"
+Hmisc::label(data2$barrier_pa_sequelae) <- "Barrier: Significant side effects"
+Hmisc::label(data2$barrier_pa_transport) <- "Barrier: No transport"
+Hmisc::label(data2$barrier_pa_organisation) <- "Barrier: No organisation"
+Hmisc::label(data2$barrier_pa_work) <- "Barrier: Work obligations"
+Hmisc::label(data2$barrier_pa_unable) <- "Barrier: Unable"
+Hmisc::label(data2$barrier_pa_insecurity) <- "Barrier: Fear of insecurity"
+Hmisc::label(data2$barrier_pa_priority) <- "Barrier: Not my priority"
+Hmisc::label(data2$barrier_pa_other) <- "Other barrier"
+Hmisc::label(data2$covid_barrier) <- "Covid impact on your barriers to practicing PA?"
+Hmisc::label(data2$facilitator_pa_control) <- "Facilitator: health control"
+Hmisc::label(data2$facilitator_pa_doctor) <- "Facilitator: doctor recommandation"
+Hmisc::label(data2$facilitator_pa_capacity) <- "Facilitator: improve capacity"
+Hmisc::label(data2$facilitator_pa_etime) <- "Facilitator: time to devote"
+Hmisc::label(data2$facilitator_pa_symptom) <- "Facilitator: improve symptom"
+Hmisc::label(data2$facilitator_pa_goal) <- "Facilitator: set a goal"
+Hmisc::label(data2$facilitator_pa_qol) <- "Facilitator: improve quality of live"
+Hmisc::label(data2$facilitator_pa_friend) <- "Facilitator: meet friends"
+Hmisc::label(data2$facilitator_pa_sleep) <- "Facilitator: improve sleep"
+Hmisc::label(data2$facilitator_pa_structure) <- "Facilitator: adapted structure"
+Hmisc::label(data2$facilitator_pa_fatigue) <- "Facilitator: decrease fatigue"
+Hmisc::label(data2$facilitator_pa_group) <- "Facilitator: group encouragement"
+Hmisc::label(data2$facilitator_pa_weight) <- "Facilitator: weight control"
+Hmisc::label(data2$facilitator_pa_security) <- "Facilitator: secure environment"
+Hmisc::label(data2$facilitator_pa_feeling) <- "Facilitator: better in his body"
+Hmisc::label(data2$facilitator_pa_supervision) <- "Facilitator: supervision by a professional"
+Hmisc::label(data2$facilitator_pa_proud) <- "Facilitator: proud of oneself"
+Hmisc::label(data2$facilitator_pa_immunity) <- "Facilitator: stimulate my immune system"
+Hmisc::label(data2$facilitator_pa_pleasure) <- "Facilitator: feel pleasure "
+Hmisc::label(data2$facilitator_pa_competent) <- "Facilitator: feel competent"
+Hmisc::label(data2$facilitator_pa_planning) <- "Facilitator: organizing my schedule"
+Hmisc::label(data2$facilitator_pa_energy) <- "Facilitator: regain energy"
+Hmisc::label(data2$facilitator_pa_other) <- "Facilitator: other"
+Hmisc::label(data2$covid_facilitator) <- "Impact covid on the factors that facilitate your PA practice?"
+Hmisc::label(data2$age) <- "Age of participants"
+Hmisc::label(data2$age_cut_4) <- "Age range of participants"
+Hmisc::label(data2$imc_category) <- "BMI of participants"
+Hmisc::label(data2$imc) <- "BMI of participants"
+Hmisc::label(data2$region) <- "Region"
+```
+
+```{r table-bc-status-bis, echo=F, message=F, warning=F}
+table1(~ age  + age_cut_4 + imc + imc_category + marital_status + education_bis  + current_work2 
+       +  current_sociopro + residence_location_bis + region + greenspace + nb_child_house + nb_child_house_age_012 
+       + nb_child_house_age_14 + nb_child_house_age_510  + nb_child_house_age_1114 + nb_child_house_age_1517 
+       + nb_child_house_age_18  + pregnancy + stage1 + breast_surgery + breast_chemo + breast_radio 
+       + breast_hormono + breast_immuno + breast_target + comor_heart + comor_neuro + comor_endo 
+       + comor_respi + comor_infla + comor_immun + comor_muscle + comor_depression + comor_locomotion 
+       + comor_other_cancer + comor_nb + activity + strengthening + pref_info_pa 
+       + pref_info_pa_who_famdoc + pref_info_pa_who_onco + pref_info_pa_who_nurse + pref_info_pa_who_hospcoach 
+       + pref_info_pa_who_gymcoach + pref_info_pa_who_patient + pref_info_pa_who_persocoach 
+       + pref_info_pa_who_physio + pref_info_pa_who_nopref + pref_info_pa_how_phone 
+       + pref_info_pa_how_sms + pref_info_pa_how_app + pref_info_pa_how_mail + pref_info_pa_how_web 
+       + pref_info_pa_how_dvd + pref_info_pa_how_video + pref_info_pa_how_leaflet 
+       + pref_info_pa_how_online + pref_info_pa_how_podcast + pref_info_pa_how_facetoface 
+       + pref_info_pa_how_group + pref_pa_interest + pref_pa_able + pref_pa_type_walking 
+       + pref_pa_type_swimming + pref_pa_type_gym + pref_pa_type_biking + pref_pa_type_dance 
+       + pref_pa_type_running + pref_pa_type_strengthening + pref_pa_type_yoga + pref_pa_type_pilates 
+       + pref_pa_type_fitness + pref_pa_type_racket + pref_pa_type_team + pref_pa_where_outside 
+       + pref_pa_where_home + pref_pa_where_work + pref_pa_where_club + pref_pa_where_hospital 
+       + pref_pa_where_nopref + pref_pa_how_alone + pref_pa_how_peer + pref_pa_how_patient 
+       + pref_pa_how_group + pref_pa_how_nopref + pref_pa_sup + pref_pa_intensity
+       + pref_pa_orga + pref_pa_recur + pref_pa_moment + pref_pa_week + pref_pa_nbday 
+       + pref_pa_duration + pref_pa_strategy_gp_online + pref_pa_strategy_indiv_online + pref_pa_strategy_online 
+       + pref_pa_strategy_phone + pref_pa_strategy_sms + pref_pa_strategy_mail 
+       + pref_pa_strategy_leaflet + pref_pa_strategy_video + pref_pa_strategy_socialnet 
+       + pref_pa_strategy_tracker + pref_pa_strategy_app + pref_pa_strategy_notebook 
+       + pref_pa_strategy_web + pref_pa_strategy_share_entourage + pref_pa_strategy_share_doctor
+       + pref_pa_strategy_doc + pref_pa_strategy_usb + pref_pa_strategy_dvd 
+       + techno_socialnetwork_fb + techno_socialnetwork_instagram 
+       + techno_socialnetwork_linkedin + techno_socialnetwork_twitter + techno_socialnetwork_no 
+       + techno_app_adidas + techno_app_fitbit + techno_app_fizzup + techno_app_garmin 
+       + techno_app_jawbone + techno_app_nike + techno_app_runtastic + techno_app_strava 
+       + techno_app_withings + techno_app_xiaomi + techno_app_healthapp + techno_app_no 
+       + techno_tracker_apple + techno_tracker_fitbit + techno_tracker_galaxy 
+       + techno_tracker_garmin + techno_tracker_jawbone + techno_tracker_withings 
+       + techno_tracker_xiaomi + techno_tracker_podo + techno_tracker_smartphone_podo 
+       + techno_tracker_no + techno_tracker_fq + techno_prog_tracker + techno_prog_tracker_no_use 
+       + techno_prog_tracker_no_info + techno_prog_tracker_no_price + techno_prog_tracker_no_security 
+       + techno_prog_tracker_no_dependancy + techno_prog_tracker_no_reliability 
+       + techno_prog_tracker_no_wrist + techno_prog_tracker_no_allergy 
+       + techno_prog_tracker_no_opportunity + techno_prog_tracker_no_userfriendly 
+       + techno_prog_tracker_no_malfunction + techno_prog_tracker_no_alone 
+       + techno_prog_tracker_no_active + techno_prog_tracker_no_interest 
+       + techno_prog_tracker_no_unable + techno_prog_tracker_no_tmtime 
+       + techno_prog_tracker_fun_step + techno_prog_tracker_fun_distance 
+       + techno_prog_tracker_fun_calorie + techno_prog_tracker_fun_nbfloor 
+       + techno_prog_tracker_fun_level + techno_prog_tracker_fun_hr 
+       + techno_prog_tracker_fun_sitting + techno_prog_tracker_fun_standing 
+       + techno_prog_tracker_fun_intensity + techno_prog_tracker_fun_type + techno_prog_tracker_fun_sleep 
+       + techno_prog_tracker_sha + techno_prog_app + techno_prog_app_no_use + techno_prog_app_no_info 
+       + techno_prog_app_no_security + techno_prog_app_no_dependency + techno_prog_app_no_opportunity 
+       + techno_prog_app_no_userfriendly + techno_prog_app_no_malfunction + techno_prog_app_no_alone 
+       + techno_prog_app_no_active + techno_prog_app_no_interest + techno_prog_app_no_unable 
+       + techno_prog_app_no_tmtime + techno_prog_web + techno_prog_web_no_use + techno_prog_web_no_info 
+       + techno_prog_web_no_security + techno_prog_web_no_dependency + techno_prog_web_no_opportunity 
+       + techno_prog_web_no_userfriendly + techno_prog_web_no_malfunction + techno_prog_web_no_alone 
+       + techno_prog_web_no_active + techno_prog_web_no_interest + techno_prog_web_no_unable 
+       + barrier_pa_fatigue + barrier_pa_weather + barrier_pa_pain + barrier_pa_partner 
+       + barrier_pa_schedule + barrier_pa_pleasure + barrier_pa_structure + barrier_pa_look 
+       + barrier_pa_interest + barrier_pa_family + barrier_pa_ignorance + barrier_pa_price 
+       + barrier_pa_injury + barrier_pa_social + barrier_pa_motivation + barrier_pa_sequelae 
+       + barrier_pa_transport + barrier_pa_organisation + barrier_pa_work + barrier_pa_unable 
+       + barrier_pa_insecurity + barrier_pa_priority + facilitator_pa_control + facilitator_pa_doctor 
+       + facilitator_pa_capacity + facilitator_pa_symptom + facilitator_pa_goal + facilitator_pa_qol 
+       + facilitator_pa_friend + facilitator_pa_sleep + facilitator_pa_structure + facilitator_pa_fatigue 
+       + facilitator_pa_group + facilitator_pa_weight + facilitator_pa_security + facilitator_pa_feeling 
+       + facilitator_pa_supervision + facilitator_pa_proud + facilitator_pa_immunity + facilitator_pa_pleasure 
+       + facilitator_pa_planning + facilitator_pa_energy | bc_status_bis, data = data2, overall = "Total")
+```
+
+# Descriptive graphics
+## Participants' BMI
+
+```{r imc-histo, echo=F, warning=F, message=F, fig.cap="Distribution of weight status based on BMI by a history of breast cancer.", fig.width=12}
+df <- data.frame(supp=c(rep("4-Underweight",4), rep("3-Normal",4), rep("2-Overweight",4), rep("1-Obesity",4)), 
+                 dose=rep(c("No BC", "Current localized BC", "Finished localized BC", "Metastatic BC"),4))
+df$len <- c(6.7, 3.2, 5.3, 3.7, 65.9, 62.1, 69.2, 58.5, 19.2, 23.4, 17.7, 23.7, 8.2, 11.3, 7.8, 14.1)
+df2 <- df %>%
+  group_by(dose) %>%
+  arrange(dose, desc(supp)) %>%
+  mutate(lab_ypos = cumsum(len) - 0.5 * len) 
+colnames(df2) <- c("BMI classification", "History of BC", "Percentage", "lab_ypos")
+
+p <- ggplot(data = df2, aes(x = `History of BC`, y = `Percentage`)) +
+  geom_col(aes(fill = `BMI classification`), width = 0.7)+
+  geom_text(aes(y = `lab_ypos`, label = `Percentage`, group =`BMI classification`), color = "white") +
+ scale_x_discrete(limits=c("No BC", "Current localized BC", "Finished localized BC", "Metastatic BC")) +
+  theme_classic() +
+ scale_fill_manual(values=c("#3f292b","#a37b73", "#dbbea1","#db7f67"))
+p
+```
+
+## Mustache box: cancer according to age
+
+```{r violin-age, echo=F, message=F, fig.cap="Mustache box presenting age distribution by a history of breast cancer."}
+violin_age <- data2 %>% 
+  filter (!is.na(bc_status_bis)) %>%
+  ggplot() +
+  geom_violin(trim = FALSE, adjust=0.8, aes(x = bc_status_bis, y = age, fill = bc_status_bis), show.legend = F) +
+  geom_boxplot(aes(y = age, x = bc_status_bis), width = 0.1, show.legend = F) +
+  labs(fill = "Breast cancer") +
+  scale_fill_manual(values =c('#ada7c9', "#56BCC3", "#E77D71", "#99d98c")) +
+  stat_summary(aes(x = bc_status_bis, y = age, fill = bc_status_bis), fun = mean, geom = "point", 
+               shape = 4, size = 5, col = "black",show.legend = F) +
+  scale_y_continuous(limits=c(0, 100)) +
+  labs(title = "", x = "History of breast cancer", y = "Age") + theme_classic() 
+violin_age
+```
+
+## Distribution of education level
+
+```{r education, echo=F, fig.cap="Distribution of education levels according to a history of breast cancer.", fig.width=16}
+df <- data.frame(supp=c(rep("6-No diploma",4), rep("5-CAP-BEP",4), rep("4-BAC",4), 
+                        rep("3-BAC+(1,2)",4), rep("2-BAC+(3,4)",4), rep("1-BAC+(5,6)",4)), 
+                 dose=rep(c("No BC", "Current localized BC", "Finished localized BC", "Metastatic BC"),6))
+df$len <- c(0.56, 0.19, 0.25, 1.48, 3.21, 6.42, 8.08, 7.41, 7.15, 9.25, 12.37, 8.89, 15.34, 19.43, 20.46, 22.22, 26.27, 32.08, 27.53, 32.59, 47.47, 32.64, 31.31, 27.41)
+df2 <- df %>%
+  group_by(dose) %>%
+  arrange(dose, desc(supp)) %>%
+  mutate(lab_ypos = cumsum(len) - 0.5 * len) 
+colnames(df2) <- c("Education level", "History of BC", "Percentage", "lab_ypos")
+
+p <- ggplot(data = df2, aes(x = `History of BC`, y = `Percentage`)) +
+  geom_col(aes(fill = `Education level`), width = 0.7)+
+  scale_x_discrete(limits=c("No BC", "Current localized BC", "Finished localized BC", "Metastatic BC")) +
+  theme_classic() +
+  scale_fill_manual(values=c("#A09992","#8EC087", "#C1D7AE","#E3E5C7", "#ECDCB0", "#FFB999"))
+p
+```
+
+## Distribution of participants in France by department
+
+```{r cartographie, echo=F, warning=F, message=F, fig.cap="Distribution of participants in France."}
+shpFrance <- "C:/Users/fanch/Desktop/CLB/GEOFLA_2-1_DEPARTEMENT_SHP_LAMB93_FXX_2015-12-01/GEOFLA/1_DONNEES_LIVRAISON_2015/GEOFLA_2-1_SHP_LAMB93_FR-ED152/DEPARTEMENT/DEPARTEMENT.shp"
+shpFrance <- st_read(shpFrance, quiet = TRUE)
+shpFrance <- shpFrance %>% 
+    group_by(CODE_DEPT) %>% 
+    summarise()
+
+tabFrequence <- matrix(NA, nrow = 95, ncol = 3)
+colnames(tabFrequence) <- c("nom_DP", "code_DP", "Freq")
+tabFrequence[, 1] <- c(
+  "Ain", "Aisne", "Allier", "Alpes-de-Haute-Provence", "Hautes-Alpes",
+  "Alpes-Maritimes", "Ardeche", "Ardennes", "Ariege", "Aube", "Aude", "Aveyron",
+  "Bouches-du-Rhone", "Calvados", "Cantal", "Charente", "Charente-Maritime",
+  "Cher", "Correze", "Cote-Dor", "Cotes-Darmor",
+  "Creuse", "Dordogne", "Doubs", "Drome", "Eure", "Eure-et-Loir", "Finistere",
+  "Haute-Corse",
+  "Gard", "Haute-Garonne", "Gers", "Gironde", "Herault", "Ille-et-Vilaine",
+  "Indre", "Indre-et-Loire", "Isere", "Jura", "Landes", "Loir-et-Cher", "Loire",
+  "Haute-Loire", "Loire-Atlantique", "Loiret", "Lot", "Lot-et-Garonne",
+  "Lozere", "Maine-et-Loire", "Manche", "Marne", "Haute-Marne", "Mayenne",
+  "Meurthe-et-Moselle", "Meuse", "Morbihan", "Moselle", "Nievre", "Nord",
+  "Oise", "Orne", "Pas-de-Calais", "Puy-de-Dome", "Pyrenees-Atlantiques",
+  "Hautes-Pyrenees", "Pyrenees-Orientales", "Bas-Rhin", "Haut-Rhin",
+  "Rhone", "Haute-Saone", "Saone-et-Loire", "Sarthe", "Savoie", "Haute-Savoie",
+  "Paris", "Seine-Maritime", "Seine-et-Marne", "Yvelines", "Deux-Sevres", "Somme",
+  "Tarn", "Tarn-et-Garonne", "Var", "Vaucluse", "Vendee", "Vienne", "Haute-Vienne",
+  "Vosges", "Yonne", "Territoire de Belfort", "Essonne", "Hauts-de-Seine",
+  "Seine-Saint-Denis", "Val-de-Marne", "Val-Doise"
+)
+tabFrequence[, 2] <- c(
+  "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15",
+  "16", "17", "18", "19", "21", "22", "23", "24", "25", "26", "27", "28",
+  "29", "2B", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42",
+  "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55",
+  "56", "57", "58", "59", "60", "61", "62", "63", "64", "65", "66", "67", "68",
+  "69", "70", "71", "72", "73", "74", "75", "76", "77", "78", "79", "80", "81",
+  "82", "83", "84", "85", "86", "87", "88", "89", "90", "91", "92", "93",
+  "94", "95"
+)
+for (i in 1:dim(tabFrequence)[1]) {
+  tabFrequence[i, 3] <- prop.table(table(data$residence_department))[[i]]*100
+}
+
+tabFrequence <- as.data.frame(tabFrequence)
+tabFrequence$Freq <- as.character(tabFrequence$Freq)
+tabFrequence$Freq <- as.numeric(tabFrequence$Freq)
+
+shpFrance <- merge(
+	all.x = TRUE
+	, x = shpFrance		, by.x = "CODE_DEPT"
+	, y = tabFrequence	, by.y = "code_DP"
+	)
+
+par(mar = c(0,0,1,0))
+plot(st_geometry(shpFrance), col = "lightgray", border = "darkgrey", bg = "aliceblue", lwd = 0.5)
+propSymbolsLayer(
+	x = shpFrance,
+	var = "Freq",
+	inches = 0.15,
+	col = alpha("lightsalmon3", alpha = .8),
+	border = "white",
+	legend.pos = "topright",
+	legend.title.txt = "Population (en %)",
+	legend.style = "e"
+)
+layoutLayer(frame = TRUE, north = FALSE, tabtitle = TRUE
+	, title = "Pourcentage de participantes par département"
+	, sources = "DOM-TOM n=15"
+	)
+north(pos = "topleft", south = TRUE)
+```
+
+## Physical activity level
+
+```{r graph-AP, echo=F, message=F, warning=F, fig.cap="Distribution of physical activity status (active or inactive) according to a history of breast cancer."}
+df <- data.frame(supp=c(rep("Active",4), rep("Inactive",4)), 
+                 dose=rep(c("No BC", "Current localized BC", "Finished localized BC", "Metastatic BC"),2))
+df$len <- c(35.9, 39.2, 33.8, 34.1, 64.1, 60.8, 66.2, 65.9)
+df2 <- df %>%
+  group_by(dose) %>%
+  arrange(dose, desc(supp)) %>%
+  mutate(lab_ypos = cumsum(len) - 0.5 * len) 
+colnames(df2) <- c("PA classification", "History of BC", "Percentage", "lab_ypos")
+
+p <- ggplot(data = df2, aes(x = `History of BC`, y = `Percentage`)) +
+  geom_col(aes(fill = `PA classification`), width = 0.7)+
+  geom_text(aes(y = `lab_ypos`, label = `Percentage`, group =`PA classification`), color = "white") +
+  scale_x_discrete(limits=c("No BC", "Current localized BC", "Finished localized BC", "Metastatic BC")) +
+  theme_classic() +
+  scale_fill_manual(values=c('#56bcc3',"#e77d71")) 
+p
+```
+
+## Comorbidity
+
+```{r comor-graph-bis, echo=F, warning=F, message=F, fig.cap="Distribution of comorbidities according to a history of breast cancer.", fig.width=17, fig.height=22, fig.pos="H"}
+depression <- data2 %>% 
+  filter(!is.na(bc_status_bis)) %>%
+  ggplot(aes(comor_depression, group = bc_status_bis)) +
+  geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") + 
+  geom_text(aes( label = scales::percent(..prop..), y= ..prop.. ), stat= "count", vjust = -.5, cex=3) +
+  labs(y = "Percent", fill="comor_depression", x="Psychiatric disorders") +
+  facet_grid(~bc_status_bis) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values = c('#56bcc3', '#e77d71'))+
+  theme(legend.position = "none")+ theme_classic()
+muscle <- data2 %>% 
+  filter(!is.na(bc_status_bis)) %>%
+  ggplot(aes(comor_muscle, group = bc_status_bis)) +
+  geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") + 
+  geom_text(aes( label = scales::percent(..prop..), y= ..prop.. ), stat= "count", vjust = -.5, cex=3) +
+  labs(y = "Percent", fill="comor_muscle", x="Musculoskeletal diseases") +
+  scale_fill_manual(values = c('#56bcc3', '#e77d71'))+
+  facet_grid(~bc_status_bis) +
+  scale_y_continuous(labels = scales::percent) +
+  theme(legend.position = "none")+ theme_classic()
+immun <- data2 %>% 
+  filter(!is.na(bc_status_bis)) %>%
+  ggplot(aes(comor_immun, group = bc_status_bis)) +
+  geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") + 
+  geom_text(aes( label = scales::percent(..prop..), y= ..prop.. ), stat= "count", vjust = -.5, cex=3) +
+  labs(y = "Percent", fill="comor_immun", x="Autoimmune diseases") +
+  scale_fill_manual(values = c('#56bcc3', '#e77d71'))+
+  facet_grid(~bc_status_bis) +
+  scale_y_continuous(labels = scales::percent) +
+  theme(legend.position = "none")+ theme_classic()
+infla <- data2 %>% 
+  filter(!is.na(bc_status_bis)) %>%
+  ggplot(aes(comor_infla, group = bc_status_bis)) +
+  geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") + 
+  geom_text(aes( label = scales::percent(..prop..), y= ..prop.. ), stat= "count", vjust = -.5, cex=3) +
+  labs(y = "Percent", fill="comor_infla", x="Inflammatory diseases") +
+  facet_grid(~bc_status_bis) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values = c('#56bcc3', '#e77d71'))+
+  theme(legend.position = "none")+ theme_classic()
+respi <- data2 %>% 
+  filter(!is.na(bc_status_bis)) %>%
+  ggplot(aes(comor_respi, group = bc_status_bis)) +
+  geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") + 
+  geom_text(aes( label = scales::percent(..prop..), y= ..prop.. ), stat= "count", vjust = -.5, cex=3) +
+  labs(y = "Percent", fill="comor_respi", x="Respiratory diseases") +
+  facet_grid(~bc_status_bis) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values = c('#56bcc3', '#e77d71'))+
+  theme(legend.position = "none")+ theme_classic()
+endo <- data2 %>% 
+  filter(!is.na(bc_status_bis)) %>%
+  ggplot(aes(comor_endo, group = bc_status_bis)) +
+  geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") + 
+  geom_text(aes( label = scales::percent(..prop..), y= ..prop.. ), stat= "count", vjust = -.5, cex=3) +
+  labs(y = "Percent", fill="comor_endo", x="Endocrine pathology") +
+  facet_grid(~bc_status_bis) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values = c('#56bcc3', '#e77d71'))+
+  theme(legend.position = "none")+ theme_classic()
+neuro <- data2 %>% 
+  filter(!is.na(bc_status_bis)) %>%
+  ggplot(aes(comor_neuro, group = bc_status_bis)) +
+  geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") + 
+  geom_text(aes( label = scales::percent(..prop..), y= ..prop.. ), stat= "count", vjust = -.5, cex=3) +
+  labs(y = "Percent", fill="comor_neuro", x="Neurological diseases") +
+  facet_grid(~bc_status_bis) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values = c('#56bcc3', '#e77d71'))+
+  theme(legend.position = "none")+ theme_classic()
+loco <- data2 %>% 
+  filter(!is.na(bc_status_bis)) %>%
+  ggplot( aes(comor_locomotion, group = bc_status_bis)) +
+  geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") + 
+  geom_text(aes( label = scales::percent(..prop..), y= ..prop.. ), stat= "count", vjust = -.5, cex=3) +
+  labs(y = "Percent", fill="comor_locomotion", x="Musculoskeletal surgery") +
+  facet_grid(~bc_status_bis) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values = c('#56bcc3', '#e77d71'))+
+  theme(legend.position = "none")+ theme_classic()
+heart <- data2 %>% 
+  filter(!is.na(bc_status_bis)) %>%
+  ggplot(aes(comor_heart, group = bc_status_bis)) +
+  geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") + 
+  geom_text(aes( label = scales::percent(..prop..), y= ..prop.. ), stat= "count", vjust = -.5, cex=3) +
+  labs(y = "Percent", fill="comor_heart", x="Cardiovascular diseases") +
+  facet_grid(~bc_status_bis) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values = c('#56bcc3', '#e77d71'))+
+  theme(legend.position = "none")+ theme_classic()
+cancer <- data2 %>% 
+  filter(!is.na(bc_status_bis)) %>%
+  ggplot(aes(comor_other_cancer, group = bc_status_bis)) +
+  geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") + 
+  geom_text(aes( label = scales::percent(..prop..), y= ..prop.. ), stat= "count", vjust = -.5, cex=3) +
+  labs(y = "Percent", fill="comor_other_cancer", x="Other cancer") +
+  facet_grid(~bc_status_bis) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values = c('#56bcc3', '#e77d71'))+
+  theme(legend.position = "none")+ theme_classic()
+
+combined <- depression + heart + immun + infla + loco + neuro + endo + respi + muscle + 
+  cancer & theme(legend.position = "none")
+comor  <- combined + plot_layout(widths = c(2,2)) 
+comor
+```
+
+```{r violin-age-comor, echo=F, message=F, fig.cap="Mustache box presenting number of comorbidities distribution by a history of breast cancer."}
+violin_comor <- data2 %>% 
+  filter (!is.na(bc_status_bis)) %>%
+  ggplot() +
+  geom_violin(trim = FALSE, adjust=0.8, aes(x = bc_status_bis, y = comor_nb, fill = bc_status_bis), show.legend = F) +
+  geom_boxplot(aes(y = comor_nb, x = bc_status_bis), width = 0.1, show.legend = F) +
+  labs(fill = "Breast cancer") +
+  scale_fill_manual(values =c('#ada7c9', "#56BCC3", "#E77D71", "#99d98c")) +
+  stat_summary(aes(x = bc_status_bis, y = comor_nb, fill = bc_status_bis), fun = mean, geom = "point", 
+               shape = 4, size = 5, col = "black",show.legend = F) +
+  scale_y_continuous(limits=c(0, 9)) +
+  labs(title = "", x = "History of breast cancer", y = "Number of comorbidities") + theme_classic() 
+violin_comor
+```
+
+# Preferences domain 
+
+```{r relevel-bc-status-bis, echo=F}
+data2$bc_status_bis <- fct_relevel(data2$bc_status_bis, "Metastatic BC", "Finished localized BC", "Current localized BC", "No BC")
+```
+
+```{r level-pref, echo=F}
+data2[,102:120] <- lapply(data2[,102:120], factor,  
+                    levels = 1:5,
+                    labels = c("Not helpful", "Not very helpful", "No opinion", "Somewhat helpful", "Very helpful"))
+```
+
+```{r likert-bis, echo=F, fig.height=22, fig.cap="Usefulness of physical activity strategies (in % on the Likert scale)."}
+item_all <- data2[, 102:120]
+names(item_all) <- c(pref_pa_strategy_gp_online="05-Group courses via live internet with a professional", 
+                 pref_pa_strategy_indiv_online="03-Individual lessons via live internet with a professional", 
+                 pref_pa_strategy_online="02-Courses put on the internet by a professional", 
+                 pref_pa_strategy_competition="19- Gaming type competition", 
+                 pref_pa_strategy_phone="17-Telephone calls by a professional", 
+                 pref_pa_strategy_sms="12- Sms of encouragement", 
+                 pref_pa_strategy_mail="15- Encouraging e-mails", 
+                 pref_pa_strategy_leaflet="07-PA recommendations and benefits brochure", 
+                 pref_pa_strategy_video="14- Video testimonials", 
+                 pref_pa_strategy_socialnet="16- Motivation via social networks", 
+                 pref_pa_strategy_tracker="06-Use of connected watch-pedometer", 
+                 pref_pa_strategy_app="04-Application to note the exercises performed", 
+                 pref_pa_strategy_notebook="10-Notebook to record the exercises carried out",
+                 pref_pa_strategy_web="11-Web page to note the exercises performed",
+                 pref_pa_strategy_share_entourage="18-Share information with those around you",
+                 pref_pa_strategy_share_doctor = "09-Share informations with doctor",
+                 pref_pa_strategy_doc="01-Online document with exercises",
+                 pref_pa_strategy_dvd="08-DVD with exercises to do autonomously", 
+                 pref_pa_strategy_usb="13-USB flash drive with exercises to do independently")
+
+l29g <- likert(item=item_all, grouping=data2$bc_status_bis)
+l29gs <- likert(summary = l29g$results[, 2:7], grouping = l29g$results[,1])
+a <- plot(l29gs, text.size=2, col=c('#a44a3f', '#f19c79','#f6f4d2', '#cbdfbd', '#95d5b2')) +
+  ggtitle("To what extent do you think each of the following strategies \n would be helpful in practicing PA?") +theme(plot.title = element_text(hjust = 0.5))
+a
+```
+
+```{r dataframe-no-meta-loca, echo=F}
+cancer_cours_loca <- filter(data2, bc_status_bis == "Current localized BC")
+cancer_finish_loca <- filter(data2, bc_status_bis == "Finished localized BC")
+cancer_meta <- filter(data2, bc_status_bis == "Metastatic BC")
+cancer_no <- filter(data2, bc_status_bis == "No BC")
+```
+
+```{r who, fig.width=10, out.width="100%", fig.height=8, fig.cap="Preferences domain: from whom participants would like to get informations on practice.", echo=F}
+social_no_cancer <- data.frame(no_cancer=c(
+  round(prop.table(table(cancer_no$pref_info_pa_who_famdoc))[[2]]*100,1), 
+  round(prop.table(table(cancer_no$pref_info_pa_who_onco))[[2]]*100,1), 
+  round(prop.table(table(cancer_no$pref_info_pa_who_nurse))[[2]]*100,1), 
+  round(prop.table(table(cancer_no$pref_info_pa_who_hospcoach))[[2]]*100,1), 
+  round(prop.table(table(cancer_no$pref_info_pa_who_gymcoach))[[2]]*100,1), 
+  round(prop.table(table(cancer_no$pref_info_pa_who_patient))[[2]]*100,1), 
+  round(prop.table(table(cancer_no$pref_info_pa_who_persocoach))[[2]]*100,1), 
+  round(prop.table(table(cancer_no$pref_info_pa_who_physio))[[2]]*100,1), 
+  round(prop.table(table(cancer_no$pref_info_pa_who_nopref))[[2]]*100,1)), 
+  nom=c("4-Médeccin de famille", "3-Oncologue", "1-Infirmière", "9-Spécialiste AP santé", "8-Spécialiste AP coach", "2-Patient",
+        "7-Entraîneur personnel", "6-Kinésithérapeute","5-Pas de préférence"))
+
+social_current_loca <- data.frame(no_cancer=c(
+  round(prop.table(table(cancer_cours_loca$pref_info_pa_who_famdoc))[[2]]*100,1), 
+  round(prop.table(table(cancer_cours_loca$pref_info_pa_who_onco))[[2]]*100,1), 
+  round(prop.table(table(cancer_cours_loca$pref_info_pa_who_nurse))[[2]]*100,1), 
+  round(prop.table(table(cancer_cours_loca$pref_info_pa_who_hospcoach))[[2]]*100,1), 
+  round(prop.table(table(cancer_cours_loca$pref_info_pa_who_gymcoach))[[2]]*100,1), 
+  round(prop.table(table(cancer_cours_loca$pref_info_pa_who_patient))[[2]]*100,1), 
+  round(prop.table(table(cancer_cours_loca$pref_info_pa_who_persocoach))[[2]]*100,1), 
+  round(prop.table(table(cancer_cours_loca$pref_info_pa_who_physio))[[2]]*100,1), 
+  round(prop.table(table(cancer_cours_loca$pref_info_pa_who_nopref))[[2]]*100,1)), 
+  nom=c("4-Médeccin de famille", "3-Oncologue", "1-Infirmière", "9-Spécialiste AP santé", "8-Spécialiste AP coach", "2-Patient",
+        "7-Entraîneur personnel", "6-Kinésithérapeute","5-Pas de préférence"))
+
+
+social_finish_loca <- data.frame(no_cancer=c(
+  round(prop.table(table(cancer_finish_loca$pref_info_pa_who_famdoc))[[2]]*100,1), 
+  round(prop.table(table(cancer_finish_loca$pref_info_pa_who_onco))[[2]]*100,1), 
+  round(prop.table(table(cancer_finish_loca$pref_info_pa_who_nurse))[[2]]*100,1), 
+  round(prop.table(table(cancer_finish_loca$pref_info_pa_who_hospcoach))[[2]]*100,1), 
+  round(prop.table(table(cancer_finish_loca$pref_info_pa_who_gymcoach))[[2]]*100,1), 
+  round(prop.table(table(cancer_finish_loca$pref_info_pa_who_patient))[[2]]*100,1), 
+  round(prop.table(table(cancer_finish_loca$pref_info_pa_who_persocoach))[[2]]*100,1), 
+  round(prop.table(table(cancer_finish_loca$pref_info_pa_who_physio))[[2]]*100,1), 
+  round(prop.table(table(cancer_finish_loca$pref_info_pa_who_nopref))[[2]]*100,1)), 
+ nom=c("4-Médeccin de famille", "3-Oncologue", "1-Infirmière", "9-Spécialiste AP santé", "8-Spécialiste AP coach", "2-Patient",
+       "7-Entraîneur personnel", "6-Kinésithérapeute","5-Pas de préférence"))
+
+social_meta <- data.frame(no_cancer=c(
+  round(prop.table(table(cancer_meta$pref_info_pa_who_famdoc))[[2]]*100,1), 
+  round(prop.table(table(cancer_meta$pref_info_pa_who_onco))[[2]]*100,1), 
+  round(prop.table(table(cancer_meta$pref_info_pa_who_nurse))[[2]]*100,1), 
+  round(prop.table(table(cancer_meta$pref_info_pa_who_hospcoach))[[2]]*100,1), 
+  round(prop.table(table(cancer_meta$pref_info_pa_who_gymcoach))[[2]]*100,1), 
+  round(prop.table(table(cancer_meta$pref_info_pa_who_patient))[[2]]*100,1), 
+  round(prop.table(table(cancer_meta$pref_info_pa_who_persocoach))[[2]]*100,1), 
+  round(prop.table(table(cancer_meta$pref_info_pa_who_physio))[[2]]*100,1), 
+  round(prop.table(table(cancer_meta$pref_info_pa_who_nopref))[[2]]*100,1)), 
+nom=c("4-Médeccin de famille", "3-Oncologue", "1-Infirmière", "9-Spécialiste AP santé", "8-Spécialiste AP coach", "2-Patient",
+      "7-Entraîneur personnel", "6-Kinésithérapeute","5-Pas de préférence"))
+
+
+no <- social_no_cancer %>%
+  ggplot( aes(x=nom, y=no_cancer)) +
+    geom_bar(stat="identity", fill="#56BCC3", alpha=.6, width=.3) +
+    coord_flip() +
+  xlab("") + ylab("Pourcentage") + theme_classic() 
+
+current_loca <- social_current_loca %>%
+  ggplot( aes(x=nom, y=no_cancer)) +
+    geom_bar(stat="identity", fill="#f68060", alpha=.6, width=.3) +
+    coord_flip() +
+  xlab("") + ylab("Pourcentage") + theme_classic() 
+
+finish_loca <- social_finish_loca %>%
+  ggplot( aes(x=nom, y=no_cancer)) +
+    geom_bar(stat="identity", fill="#CAE4B4", alpha=.9, width=.3) +
+    coord_flip() +
+  xlab("") + ylab("Pourcentage") + theme_classic() 
+
+meta <- social_meta %>%
+  ggplot( aes(x=nom, y=no_cancer)) +
+    geom_bar(stat="identity", fill="#6E4A82", alpha=.5, width=.3) +
+    coord_flip() +
+  xlab("") + ylab("Pourcentage") + theme_classic() 
+
+a <- plot_grid(no, current_loca, finish_loca, meta, labels=c("CS non", "CS localisé actuel", "CS localisé ancien", "CS métastatique"),
+               label_size = 10, hjust = c(-3.7, -1.5, -1.5,-1.6), ncol =2 , nrow = 2)
+a
+```
+
+```{r how, fig.width=20, out.width="100%", fig.height=5, fig.cap="Preferences domain: Preferences domain: by what means participants would like to get info on practice.", echo=F}
+social_no_cancer <- data.frame(no_cancer=c(
+  round(prop.table(table(cancer_no$pref_info_pa_how_phone))[[2]]*100,1), 
+  round(prop.table(table(cancer_no$pref_info_pa_how_sms))[[2]]*100,1), 
+  round(prop.table(table(cancer_no$pref_info_pa_how_app))[[2]]*100,1), 
+  round(prop.table(table(cancer_no$pref_info_pa_how_mail))[[2]]*100,1), 
+  round(prop.table(table(cancer_no$pref_info_pa_how_web))[[2]]*100,1), 
+  round(prop.table(table(cancer_no$pref_info_pa_how_dvd))[[2]]*100,1), 
+  round(prop.table(table(cancer_no$pref_info_pa_how_video))[[2]]*100,1), 
+  round(prop.table(table(cancer_no$pref_info_pa_how_leaflet))[[2]]*100,1), 
+  round(prop.table(table(cancer_no$pref_info_pa_how_online))[[2]]*100,1),
+  round(prop.table(table(cancer_no$pref_info_pa_how_podcast))[[2]]*100,1), 
+  round(prop.table(table(cancer_no$pref_info_pa_how_facetoface))[[2]]*100,1), 
+  round(prop.table(table(cancer_no$pref_info_pa_how_group))[[2]]*100,1)), 
+  nom=c("02-Phone", "03-SMS", "10-Mobile application", "11-Mail", "06-Web", "01-DVD", "12-Video", "07-Leaflet", "05-Online", 
+        "04-Podcast", "09-Face to face", "08-Group"))
+
+social_current_loca <- data.frame(no_cancer=c(
+  round(prop.table(table(cancer_cours_loca$pref_info_pa_how_phone))[[2]]*100,1), 
+  round(prop.table(table(cancer_cours_loca$pref_info_pa_how_sms))[[2]]*100,1), 
+  round(prop.table(table(cancer_cours_loca$pref_info_pa_how_app))[[2]]*100,1), 
+  round(prop.table(table(cancer_cours_loca$pref_info_pa_how_mail))[[2]]*100,1), 
+  round(prop.table(table(cancer_cours_loca$pref_info_pa_how_web))[[2]]*100,1), 
+  round(prop.table(table(cancer_cours_loca$pref_info_pa_how_dvd))[[2]]*100,1), 
+  round(prop.table(table(cancer_cours_loca$pref_info_pa_how_video))[[2]]*100,1), 
+  round(prop.table(table(cancer_cours_loca$pref_info_pa_how_leaflet))[[2]]*100,1), 
+  round(prop.table(table(cancer_cours_loca$pref_info_pa_how_online))[[2]]*100,1),
+  round(prop.table(table(cancer_cours_loca$pref_info_pa_how_podcast))[[2]]*100,1), 
+  round(prop.table(table(cancer_cours_loca$pref_info_pa_how_facetoface))[[2]]*100,1), 
+  round(prop.table(table(cancer_cours_loca$pref_info_pa_how_group))[[2]]*100,1)), 
+  nom=c("02-Phone", "03-SMS", "10-Mobile application", "11-Mail", "06-Web", "01-DVD", "12-Video", "07-Leaflet", "05-Online",
+        "04-Podcast", "09-Face to face", "08-Group"))
+
+social_finish_loca <- data.frame(no_cancer=c(
+  round(prop.table(table(cancer_finish_loca$pref_info_pa_how_phone))[[2]]*100,1), 
+  round(prop.table(table(cancer_finish_loca$pref_info_pa_how_sms))[[2]]*100,1), 
+  round(prop.table(table(cancer_finish_loca$pref_info_pa_how_app))[[2]]*100,1), 
+  round(prop.table(table(cancer_finish_loca$pref_info_pa_how_mail))[[2]]*100,1), 
+  round(prop.table(table(cancer_finish_loca$pref_info_pa_how_web))[[2]]*100,1), 
+  round(prop.table(table(cancer_finish_loca$pref_info_pa_how_dvd))[[2]]*100,1), 
+  round(prop.table(table(cancer_finish_loca$pref_info_pa_how_video))[[2]]*100,1), 
+  round(prop.table(table(cancer_finish_loca$pref_info_pa_how_leaflet))[[2]]*100,1), 
+  round(prop.table(table(cancer_finish_loca$pref_info_pa_how_online))[[2]]*100,1),
+  round(prop.table(table(cancer_finish_loca$pref_info_pa_how_podcast))[[2]]*100,1), 
+  round(prop.table(table(cancer_finish_loca$pref_info_pa_how_facetoface))[[2]]*100,1), 
+  round(prop.table(table(cancer_finish_loca$pref_info_pa_how_group))[[2]]*100,1)), 
+  nom=c("02-Phone", "03-SMS", "10-Mobile application", "11-Mail", "06-Web", "01-DVD", "12-Video", "07-Leaflet", "05-Online", 
+        "04-Podcast", "09-Face to face", "08-Group"))
+
+social_meta <- data.frame(no_cancer=c(
+  round(prop.table(table(cancer_meta$pref_info_pa_how_phone))[[2]]*100,1), 
+  round(prop.table(table(cancer_meta$pref_info_pa_how_sms))[[2]]*100,1), 
+  round(prop.table(table(cancer_meta$pref_info_pa_how_app))[[2]]*100,1), 
+  round(prop.table(table(cancer_meta$pref_info_pa_how_mail))[[2]]*100,1), 
+  round(prop.table(table(cancer_meta$pref_info_pa_how_web))[[2]]*100,1), 
+  round(prop.table(table(cancer_meta$pref_info_pa_how_dvd))[[2]]*100,1), 
+  round(prop.table(table(cancer_meta$pref_info_pa_how_video))[[2]]*100,1), 
+  round(prop.table(table(cancer_meta$pref_info_pa_how_leaflet))[[2]]*100,1), 
+  round(prop.table(table(cancer_meta$pref_info_pa_how_online))[[2]]*100,1),
+  round(prop.table(table(cancer_meta$pref_info_pa_how_podcast))[[2]]*100,1), 
+  round(prop.table(table(cancer_meta$pref_info_pa_how_facetoface))[[2]]*100,1), 
+  round(prop.table(table(cancer_meta$pref_info_pa_how_group))[[2]]*100,1)), 
+  nom=c("02-Phone", "03-SMS", "10-Mobile application", "11-Mail", "06-Web", "01-DVD", "12-Video", "07-Leaflet", "05-Online", 
+        "04-Podcast", "09-Face to face", "08-Group"))
+
+no <- social_no_cancer %>%
+  ggplot( aes(x=nom, y=no_cancer)) +
+    geom_bar(stat="identity", fill="#56BCC3", alpha=.6, width=.3) +
+    coord_flip() +
+  xlab("") + ylab("Percent") + theme_classic() 
+
+current_loca <- social_current_loca %>%
+  ggplot( aes(x=nom, y=no_cancer)) +
+    geom_bar(stat="identity", fill="#f68060", alpha=.6, width=.3) +
+    coord_flip() +
+  xlab("") + ylab("Percent") + theme_classic() 
+
+finish_loca <- social_finish_loca %>%
+  ggplot( aes(x=nom, y=no_cancer)) +
+    geom_bar(stat="identity", fill="#CAE4B4", alpha=.9, width=.3) +
+    coord_flip() +
+  xlab("") + ylab("Percent") + theme_classic() 
+
+meta <- social_meta %>%
+  ggplot( aes(x=nom, y=no_cancer)) +
+    geom_bar(stat="identity", fill="#6E4A82", alpha=.5, width=.3) +
+    coord_flip() +
+  xlab("") + ylab("Percent") + theme_classic() 
+
+plot_grid(no, current_loca, finish_loca, meta, labels=c("No BC", "Current localized BC", "Finished localized BC", "Metastatic BC"), 
+          label_size = 10, hjust = c(-4, -1.2, -1.2,-2), ncol =4 , nrow = 1)
+```
+
+```{r type-likert, echo=F, fig.height=12}
+item_all <- data2[, 67:78]
+names(item_all) <- c(pref_pa_type_walking="01-Walking",
+                     pref_pa_type_swimming="05-Swimming",
+                     pref_pa_type_gym="10-Gym",
+                     pref_pa_type_biking="08-Biking",
+                     pref_pa_type_dance="06-Dance",
+                     pref_pa_type_running="07-Running",
+                     pref_pa_type_strengthening="03-Strengthening",
+                     pref_pa_type_yoga="02-Yoga",
+                     pref_pa_type_pilates="04-Pilates",
+                     pref_pa_type_fitness="09-Fitness",
+                     pref_pa_type_racket="11-Racket",
+                     pref_pa_type_team="12-Team")
+l29g <- likert(item=item_all, grouping=data2$bc_status_bis)
+plot(l29g, text.size=2, col=c('#f19c79', '#cbdfbd')) +
+  ggtitle("Preferences domain: type of PA women wish to practice?") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r where-PA-likert, echo=F, fig.height=7}
+item_all <- data2[, 80:85]
+names(item_all) <- c(pref_pa_where_outside="1-Outside",
+                     pref_pa_where_home="3-Home",
+                    pref_pa_where_work="5-Work",
+                    pref_pa_where_club="2-Club",
+                    pref_pa_where_hospital="4-Hospital",
+                    pref_pa_where_nopref="6-No preference")
+l29g <- likert(item=item_all, grouping=data2$bc_status_bis)
+plot(l29g, text.size=2, col=c('#f19c79', '#cbdfbd')) +
+  ggtitle("Preferences domain: where women wish to practice PA") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r how-PA-likert, echo=F, fig.height=7}
+item_all <- data2[, 87:91]
+names(item_all) <- c(pref_pa_how_alone="2-Alone",
+                     pref_pa_how_peer="1-In pairs, groups",
+                     pref_pa_how_patient="5-With patient",
+                     pref_pa_how_group="3-Group of non-patients",
+                     pref_pa_how_nopref="4-No preference")
+l29g <- likert(item=item_all, grouping=data2$bc_status_bis)
+plot(l29g, text.size=2, col=c('#f19c79', '#cbdfbd')) +
+  ggtitle("Preferences domain: how women wish to practice PA?") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r relevel-bc-status-bisss, echo=F}
+data2$bc_status_bis <- fct_relevel(data2$bc_status_bis, "No BC", "Current localized BC", "Finished localized BC", "Metastatic BC")
+```
+
+```{r pref-other-other, echo=F, fig.cap="", fig.width=10}
+able <- data2 %>% 
+  filter(!is.na(bc_status_bis)) %>%
+  ggplot(aes(pref_pa_able, group = bc_status_bis)) +
+  geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count", show.legend = F) + 
+  geom_text(aes( label = scales::percent(..prop..), y= ..prop.. ), stat= "count", vjust = -.5, cex=3, show.legend = F) +
+  labs(y = "Percent", fill="pref_pa_able", x="PA adapted to abilities") +
+  facet_grid(~bc_status_bis) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values = c("#428a9e", '#c14975', '#f67913'))+
+  theme(legend.position = "none")+theme_classic()
+
+intensity <- data2 %>% 
+  filter(!is.na(bc_status_bis)) %>%
+  ggplot(aes(pref_pa_intensity, group = bc_status_bis)) +
+  geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count", show.legend = F) + 
+  geom_text(aes( label = scales::percent(..prop..), y= ..prop.. ), stat= "count", vjust = -.5, cex=3, show.legend = F) +
+  labs(y = "Percent", fill="pref_pa_intensity", x="PA intensity") +
+  facet_grid(~bc_status_bis) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values = c("#6e4a82", "#e19d30",'#c14975', '#f67913'))+
+  theme(legend.position = "none")+theme_classic()
+
+orga <- data2 %>% 
+  filter(!is.na(bc_status_bis)) %>%
+  ggplot( aes(pref_pa_orga, group= bc_status_bis)) +
+  geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count", show.legend = F) + 
+  geom_text(aes( label = scales::percent(..prop..), y= ..prop.. ), stat= "count", vjust = -.5, cex=3, show.legend = F) +
+  labs(y = "Percent", fill="pref_pa_orga", x="PA organization") +
+  facet_grid(~bc_status_bis) +
+  scale_fill_manual(values =  c("#e19d30", '#c14975', '#f67913'))+
+  scale_y_continuous(labels = scales::percent) +
+  theme(legend.position = "none")+theme_classic()
+
+recur <- data2 %>% 
+  filter(!is.na(bc_status_bis)) %>%
+  ggplot(aes(pref_pa_recur, group = bc_status_bis)) +
+  geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count", show.legend = F) + 
+  geom_text(aes( label = scales::percent(..prop..), y= ..prop.. ), stat= "count", vjust = -.5, cex=3, show.legend = F) +
+  labs(y = "Percent", fill="pref_pa_recur", x="Types of activities") +
+  facet_grid(~bc_status_bis) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values =  c("#e19d30", '#c14975', '#f67913'))+
+  theme(legend.position = "none")+theme_classic()
+
+nbday <- data2 %>% 
+  filter(!is.na(bc_status_bis)) %>%
+  ggplot( aes(pref_pa_nbday, group = bc_status_bis)) +
+  geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count", show.legend = F) + 
+  geom_text(aes( label = scales::percent(..prop..), y= ..prop.. ), stat= "count", vjust = -.5, cex=2.5, show.legend = F) +
+  labs(y = "Percent", fill="pref_pa_nbday", x="PA number of day / week") +
+  facet_grid(~bc_status_bis) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values =  c("#428a9e","#6e4a82", "#e19d30", '#c14975', '#f67913', "#bbbf88","#94c969"))+
+  theme(legend.position = "none") +
+  theme_classic()
+
+duration <- data2 %>% 
+  filter(!is.na(bc_status_bis)) %>%
+  ggplot(aes(pref_pa_duration, group = bc_status_bis)) +
+  geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count", show.legend = F) + 
+  geom_text(aes( label = scales::percent(..prop..), y= ..prop.. ), stat= "count", vjust = -.5, cex=3, show.legend = F) +
+  labs(y = "Percent", fill="pref_pa_duration", x="Practice time (min)") +
+  facet_grid(~bc_status_bis) +
+  scale_y_continuous(labels = scales::percent) +
+  theme(legend.position = "none")+
+  scale_fill_manual(values=c("#6e4a82", "#e19d30",'#c14975', '#f67913')) +theme_classic()
+```
+
+```{r able, fig.cap="Interest in practicing a physical activity adapted to the participants abilities.", fig.width=10, echo=F, fig.height=4}
+able
+```
+
+```{r inten, echo=F, fig.cap="Participants' wishes regarding the intensity of physical activity.", fig.width=12, fig.height=4}
+intensity
+```
+
+```{r orga, echo=F, fig.cap="Participants' wishes regarding the organization of physical activity.", fig.width=12, fig.height=4}
+orga
+```
+
+```{r recur, echo=F, fig.cap="Participants' wishes regarding the type of activities.", fig.width=12, fig.height=4}
+recur
+```
+
+```{r day, echo=F, fig.cap="Participants' wishes regarding the maximum number of days per week for physical activity.", fig.width=12, fig.height=4}
+nbday
+```
+
+```{r duration, echo=F, fig.cap="Participants' wishes regarding the time of a physical activity session.", fig.width=12, fig.height=4}
+duration
+```
+
+```{r week, echo=F, fig.width=16, message=F, warning=F, fig.cap="Participants' wishes regarding days of the week for physical activity.", fig.height=4.5}
+week <- data2 %>% 
+  filter(!is.na(bc_status_bis)) %>%
+  ggplot( aes(pref_pa_week, group = bc_status_bis)) +
+  geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count", show.legend = F) + 
+  geom_text(aes( label = scales::percent(..prop..), y= ..prop.. ), stat= "count", vjust = -.5, cex=3, show.legend = F) +
+  labs(y = "Percent", fill="pref_pa_week", x="PA weekdays") +
+  facet_grid(~bc_status_bis) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values=c("#6e4a82", "#e19d30",'#c14975', '#f67913'))+
+  theme(legend.position = "none") + theme_classic()
+week
+```
+
+# Technology domain
+
+```{r socialnet, fig.width=22, out.width="100%", fig.height=7, fig.cap="Technology domain: Social network use by participants.", echo=F}
+nom <- c("5-Facebook", "4-Instagram", "3-Linkedin", "1-Twitter", "2-No socialnetwork")
+social_no_cancer <- data.frame(no_cancer=c(
+  round(prop.table(table(cancer_no$techno_socialnetwork_fb))[[2]]*100,1), 
+  round(prop.table(table(cancer_no$techno_socialnetwork_instagram))[[2]]*100,1), 
+  round(prop.table(table(cancer_no$techno_socialnetwork_linkedin))[[2]]*100,1), 
+  round(prop.table(table(cancer_no$techno_socialnetwork_twitter))[[2]]*100,1), 
+  round(prop.table(table(cancer_no$techno_socialnetwork_no))[[2]]*100,1)), 
+  nom=nom)
+
+social_current <- data.frame(no_cancer=c(
+  round(prop.table(table(cancer_cours_loca$techno_socialnetwork_fb))[[2]]*100,1), 
+  round(prop.table(table(cancer_cours_loca$techno_socialnetwork_instagram))[[2]]*100,1), 
+  round(prop.table(table(cancer_cours_loca$techno_socialnetwork_linkedin))[[2]]*100,1), 
+  round(prop.table(table(cancer_cours_loca$techno_socialnetwork_twitter))[[2]]*100,1), 
+  round(prop.table(table(cancer_cours_loca$techno_socialnetwork_no))[[2]]*100,1)), 
+  nom=nom)
+
+social_finish <- data.frame(no_cancer=c(
+  round(prop.table(table(cancer_finish_loca$techno_socialnetwork_fb))[[2]]*100,1), 
+  round(prop.table(table(cancer_finish_loca$techno_socialnetwork_instagram))[[2]]*100,1), 
+  round(prop.table(table(cancer_finish_loca$techno_socialnetwork_linkedin))[[2]]*100,1), 
+  round(prop.table(table(cancer_finish_loca$techno_socialnetwork_twitter))[[2]]*100,1), 
+  round(prop.table(table(cancer_finish_loca$techno_socialnetwork_no))[[2]]*100,1)), 
+  nom=nom)
+
+social_m <- data.frame(no_cancer=c(
+  round(prop.table(table(cancer_meta$techno_socialnetwork_fb))[[2]]*100,1), 
+  round(prop.table(table(cancer_meta$techno_socialnetwork_instagram))[[2]]*100,1), 
+  round(prop.table(table(cancer_meta$techno_socialnetwork_linkedin))[[2]]*100,1), 
+  round(prop.table(table(cancer_meta$techno_socialnetwork_twitter))[[2]]*100,1), 
+  round(prop.table(table(cancer_meta$techno_socialnetwork_no))[[2]]*100,1)), 
+  nom=nom)
+
+no <- social_no_cancer %>%
+  ggplot( aes(x=nom, y=no_cancer)) +
+    geom_bar(stat="identity", fill="#56BCC3", alpha=.6, width=.3) +
+    coord_flip() +
+  xlab("") + ylab("Percent") + theme_classic() 
+
+current <- social_current %>%
+  ggplot( aes(x=nom, y=no_cancer)) +
+    geom_bar(stat="identity", fill="#f68060", alpha=.6, width=.3) +
+    coord_flip() +
+  xlab("") + ylab("Percent") + theme_classic() 
+
+finish <- social_finish %>%
+  ggplot( aes(x=nom, y=no_cancer)) +
+    geom_bar(stat="identity", fill="#CAE4B4", alpha=.9, width=.3) +
+    coord_flip() +
+  xlab("") + ylab("Percent") + theme_classic() 
+
+m <- social_m %>%
+  ggplot( aes(x=nom, y=no_cancer)) +
+    geom_bar(stat="identity", fill="#6E4A82", alpha=.5, width=.3) +
+    coord_flip() +
+  xlab("") + ylab("Percent") + theme_classic() 
+
+plot_grid(no, current, finish,m, labels=c("No BC", "Current localized BC", "Finished localized BC", "Metastatic BC"), 
+          label_size = 10, hjust = c(-3.7, -1.2, -1.2,-1.8), ncol =4 , nrow = 1)
+```
+
+```{r app-likert, echo=F, fig.height=12}
+item_all <- data2[, 128:139]
+names(item_all) <- c(techno_app_adidas="07-Adidas",
+                     techno_app_fitbit="06-Fitbit",
+                     techno_app_fizzup="10-Fizzup",
+                     techno_app_garmin="04-Garmin",
+                     techno_app_jawbone="12-Jawbone",
+                     techno_app_nike="09-Nike",
+                     techno_app_runtastic="05-Runtastic",
+                     techno_app_strava="03-Strava",
+                     techno_app_withings="08-Withings",
+                     techno_app_xiaomi="11-Xiaomi",
+                     techno_app_healthapp="02-Healthapp",
+                     techno_app_no="01-No app")
+l29g <- likert(item=item_all, grouping=data2$bc_status_bis)
+plot(l29g, text.size=2, col=c('#f19c79', '#cbdfbd')) +
+  ggtitle("Technology domain: PA applications that participants have.") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r tracker-likert, echo=F, fig.height=10}
+item_all <- data2[, 141:150]
+names(item_all) <- c(
+  techno_tracker_apple="06-Apple",
+                     techno_tracker_fitbit="04-Fitbit",
+                     techno_tracker_galaxy="08-Galaxy Watch",
+                     techno_tracker_garmin="03-Garmin",
+                     techno_tracker_jawbone="10-Jawbone",
+                     techno_tracker_withings="07-Withings",
+                     techno_tracker_xiaomi="09-Xiaomi",
+                     techno_tracker_podo="05-Classic pedometer",
+                     techno_tracker_smartphone_podo="02-Smartphone pedometer",
+                     techno_tracker_no="01-No tracker")
+l29g <- likert(item=item_all, grouping=data2$bc_status_bis)
+plot(l29g, text.size=2, col=c('#f19c79', '#cbdfbd')) +
+  ggtitle("Technology domain: activity trackers that participants have.") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r tracker-info-likert, echo=F, fig.height=12, fig.width=12}
+item_all <- data2[, 171:181]
+names(item_all) <- c(
+techno_prog_tracker_fun_step="04-Step",
+techno_prog_tracker_fun_distance="01-Distance",
+techno_prog_tracker_fun_calorie="05-Calorie",
+techno_prog_tracker_fun_nbfloor="10-Number of floor",
+techno_prog_tracker_fun_level="11-PA level",
+techno_prog_tracker_fun_hr="03-Heart rate",
+techno_prog_tracker_fun_sitting="08-Time spend sitting",
+techno_prog_tracker_fun_standing="09-Time spend standing",
+techno_prog_tracker_fun_intensity="02-Intensity",
+techno_prog_tracker_fun_type="07-Time spend in PA type",
+techno_prog_tracker_fun_sleep="06-Sleep")
+l29g <- likert(item=item_all, grouping=data2$bc_status_bis)
+plot(l29g, text.size=2, col=c('#f19c79', '#cbdfbd')) +
+  ggtitle("Technology domain: information that participants want to know about an activity tracker.") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r tracker-prog-likert, echo=F, fig.height=14, fig.width=12}
+item_all <- data2[, 154:169]
+names(item_all) <- c(
+techno_prog_tracker_no_use="10-Fear of use",
+techno_prog_tracker_no_info="06-Few info",
+techno_prog_tracker_no_price="03-Price",
+techno_prog_tracker_no_security="01-Misuse of data",
+techno_prog_tracker_no_dependancy="09-Dependancy",
+techno_prog_tracker_no_reliability="13-No reliability",
+techno_prog_tracker_no_wrist="04-No wrist wear",
+techno_prog_tracker_no_allergy="14-Wrist allergy",
+techno_prog_tracker_no_opportunity="02-No opporunity",
+techno_prog_tracker_no_userfriendly="08-No userfriendly",
+techno_prog_tracker_no_tmtime="12-No time",
+techno_prog_tracker_no_malfunction="15-Malfunction",
+techno_prog_tracker_no_alone="07-No program alone",
+techno_prog_tracker_no_active="05-Too much active",
+techno_prog_tracker_no_interest="11-No more sport",
+techno_prog_tracker_no_unable="16-Physically unable"
+)
+l29g <- likert(item=item_all, grouping=data2$bc_status_bis)
+plot(l29g, text.size=2, col=c('#f19c79', '#cbdfbd')) +
+  ggtitle("Technology domain: reasons of no interest in a remote program via an activity tracker.") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r app-prog-likert, echo=F, fig.height=12, fig.width=12}
+item_all <- data2[, 185:196]
+names(item_all) <- c(
+techno_prog_app_no_use="09-Fear of use",
+techno_prog_app_no_info="04-Few info",
+techno_prog_app_no_security="01-Misuse of data",
+techno_prog_app_no_dependency="08-Dependancy",
+techno_prog_app_no_opportunity="07-No opporunity",
+techno_prog_app_no_userfriendly="02-No userfriendly",
+techno_prog_app_no_tmtime="06-No time",
+techno_prog_app_no_malfunction="11-Malfunction",
+techno_prog_app_no_alone="05-No program alone",
+techno_prog_app_no_active="03-Too much active",
+techno_prog_app_no_interest="10-No more sport",
+techno_prog_app_no_unable="12-Physically unable")
+
+l29g <- likert(item=item_all, grouping=data2$bc_status_bis)
+plot(l29g, text.size=2, col=c('#f19c79', '#cbdfbd')) +
+  ggtitle("Technology domain: reasons of no interest in a remote program via a phone application.") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r web-program-likert, echo=F, fig.height=12}
+item_all <- data2[, 199:210]
+names(item_all) <- c(
+techno_prog_web_no_use="10-Fear of use",
+techno_prog_web_no_info="06-Few info",
+techno_prog_web_no_security="03-Misuse of data",
+techno_prog_web_no_dependency="09-Dependancy",
+techno_prog_web_no_opportunity="07-No opporunity",
+techno_prog_web_no_userfriendly="01-No userfriendly",
+techno_prog_web_no_tmtime="02-No time",
+techno_prog_web_no_malfunction="11-Malfunction",
+techno_prog_web_no_alone="04-No program alone",
+techno_prog_web_no_active="05-Too much active",
+techno_prog_web_no_interest="08-No more sport",
+techno_prog_web_no_unable="12-Physically unable")
+
+l29g <- likert(item=item_all, grouping=data2$bc_status_bis)
+plot(l29g, text.size=2, col=c('#f19c79', '#cbdfbd')) +
+  ggtitle("Technology domain: reasons of no interest in a remote program via a website.") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+# Barrier domain
+
+```{r levels-barriers, echo=F}
+data2[,213:234] <- lapply(data2[,213:234], factor,  
+                    levels = 1:5,
+                    labels = c("Not at all", "Somewhat disagree", "No opinion","Somewhat agree", "Strongly agree"))
+```
+
+```{r likert-barr, echo=F,fig.height=22, fig.cap="Agreement for physical activity barriers (in % on the Likert scale)."}
+data_barrier <- data2[, 213:234]
+item_all <- data_barrier
+names(item_all) <- c(barrier_pa_fatigue= "02-Fatigue",
+                         barrier_pa_weather = "04-Bad weather to practice",
+                         barrier_pa_pain = "14-Severe pain",
+                         barrier_pa_partner = "07-No partner to practice",
+                         barrier_pa_schedule = "03-Schedule",
+                         barrier_pa_pleasure = "12-Lack of pleasure",
+                         barrier_pa_structure = "13-No structure around",
+                         barrier_pa_look = "15-Fear of view of others", 
+                         barrier_pa_interest = "19-Lack of interest",
+                         barrier_pa_family = "08-Family commitments",
+                         barrier_pa_ignorance = "10-Ignorance of practice",
+                         barrier_pa_price = "11-Price",
+                         barrier_pa_injury = "17-Fear of injury",
+                         barrier_pa_social = "16-Prefer see friends",
+                         barrier_pa_motivation = "01-Lack of motivation",
+                         barrier_pa_sequelae = "22-Significant side effects",
+                         barrier_pa_transport = "21-No transport",
+                         barrier_pa_organisation = "05-Lack of organisation",
+                         barrier_pa_work = "06-Work obligations",
+                         barrier_pa_unable = "18-Unable",
+                         barrier_pa_insecurity = "20-Fear of insecurity",
+                         barrier_pa_priority = "09-Not my priority")
+                         
+l29g <- likert(item=item_all, grouping=data2$bc_status_bis)
+l29gs <- likert(summary = l29g$results[, 2:7], grouping = l29g$results[,1])
+aa <- plot(l29gs, text.size=2, col=c('#a44a3f', '#f19c79','#f6f4d2', '#cbdfbd', '#95d5b2'))+
+  ggtitle("I don't do as much physical activity as I would like because : ") +
+  theme(plot.title = element_text(hjust = 0.5))
+aa
+```
+
+# Facilitators domain
+
+```{r levels-faci, echo=F}
+data2[,237:258] <- lapply(data2[,237:258], factor,  
+                    levels = 1:5,
+                    labels = c("Not at all", "Somewhat disagree", "No opinion","Somewhat agree", "Strongly agree"))
+```
+
+```{r likert-faci, echo=F, fig.height=22, fig.cap="Agreement for physical activity barriers (in % on the Likert scale)."}
+data_facilitator <- data2[, c( 237:258)]
+item_all <- data_facilitator
+names(item_all) <- c(facilitator_pa_control = "04-Health control",
+                         facilitator_pa_doctor = "21-Doctor recommandation",
+                         facilitator_pa_capacity = "02-Improve capacity",
+                         facilitator_pa_etime = "15-Time to devote",
+                         facilitator_pa_symptom = "22-Improve symptom",
+                         facilitator_pa_goal = "12-Set a goal",
+                         facilitator_pa_qol = "03-Improve quality of live",
+                         facilitator_pa_friend = "17-Meet friends",
+                         facilitator_pa_sleep = "11-Improve sleep",
+                         facilitator_pa_structure = "20-Adapted structure",
+                         facilitator_pa_fatigue = "16-Decrease fatigue",
+                         facilitator_pa_group = "18-Group encouragement",
+                         facilitator_pa_weight = "08-Weight control",
+                         facilitator_pa_security = "10-Secure environment",
+                         facilitator_pa_feeling = "01-Better in his body",
+                         facilitator_pa_supervision = "19-Supervision by a professional",
+                         facilitator_pa_proud = "07-Proud of oneself",
+                         facilitator_pa_immunity = "09-Stimulate my immune system",
+                         facilitator_pa_pleasure = "05-Feel pleasure ",
+                         facilitator_pa_competent = "14-Feel competent",
+                         facilitator_pa_planning = "13-Organizing my schedule",
+                         facilitator_pa_energy = "06-Regain energy")
+
+l29g <- likert(item=item_all, grouping=data2$bc_status_bis)
+l29gs <- likert(summary = l29g$results[, 2:7], grouping = l29g$results[,1])
+aaa <- plot(l29gs, text.size=2, col=c('#a44a3f', '#f19c79','#f6f4d2', '#cbdfbd', '#95d5b2'))+
+  ggtitle("My physical activity is enabled by the fact that :") +
+  theme(plot.title = element_text(hjust = 0.5))
+aaa
+```
+
+# Analyse de texte sur la variable pa_type
+
+```{r graph-mots, echo=F}
+docs <- Corpus(VectorSource(data$pa_type))
+toSpace <- content_transformer(function (x , pattern ) gsub(pattern, "e", x))
+docs <- tm_map(docs, toSpace, "Ã©")
+toSpace <- content_transformer(function (x , pattern ) gsub(pattern, "a", x))
+docs <- tm_map(docs, toSpace, "Ã")
+toSpace <- content_transformer(function (x , pattern ) gsub(pattern, "'", x))
+docs <- tm_map(docs, toSpace, "â€™")
+toSpace <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+docs <- tm_map(docs, toSpace, "\n")
+docs <- tm_map(docs, content_transformer(tolower))
+docs <- tm_map(docs, removeNumbers)
+docs <- tm_map(docs, removePunctuation)
+dtm <- TermDocumentMatrix(docs)
+m <- as.matrix(dtm)
+v <- sort(rowSums(m),decreasing=TRUE)
+d <- data.frame(word = names(v),freq=v)
+set.seed(1234)
+a <- wordcloud(words = d$word, freq = d$freq, min.freq = 1,
+          max.words=50, random.order=FALSE, rot.per=0.35, 
+          colors=brewer.pal(8, "Dark2"))
+```
